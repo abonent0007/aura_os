@@ -32,6 +32,7 @@
 ```bash
 pip install -r requirements.txt
 cp .env.example .env   # пропиши DEEPSEEK_API_KEY
+setup_vosk.bat         # голосовая модель (87 MB, один раз)
 
 start_web.bat          # веб-интерфейс :8000
 start_console.bat      # консольный чат
