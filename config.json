@@ -1,0 +1,247 @@
+{
+  "_comment": "==================== AURA OS CONFIG ====================",
+  "_version": "1.0.1",
+  "_note": "API ключи в .env файле, здесь только публичные настройки",
+  "agent": {
+    "_comment": "Основной мозг — DeepSeek v4 Pro",
+    "provider": "deepseek",
+    "_providers": {
+      "deepseek": "DEEPSEEK_API_KEY",
+      "_openai": "OPENAI_API_KEY (закомментирован)",
+      "_openrouter": "OPENROUTER_API_KEY (закомментирован)",
+      "_local": "OLLAMA_API_KEY (опционально)"
+    },
+    "model": "deepseek-v4-pro",
+    "temperature": 0.7,
+    "max_tokens": 6000,
+    "base_url": "https://api.deepseek.com/v1"
+  },
+  "compactor": {
+    "_comment": "Сжатие диалогов — DeepSeek v4 Flash (дешевле)",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "temperature": 0.3,
+    "max_tokens": 1024
+  },
+  "voice": {
+    "_comment": "Голос: локальные движки (OpenAI не используется)",
+    "input": {
+      "engine": "vosk",
+      "_engines": {
+        "vosk": "Офлайн (нужна модель)",
+        "google": "Google Speech (бесплатно, онлайн)",
+        "whisper_api": "OpenAI (требует ключ)"
+      },
+      "vosk_model_path": "models/vosk-model-small-ru-0.22",
+      "sample_rate": 16000,
+      "language": "ru"
+    },
+    "output": {
+      "engine": "edge_tts",
+      "_engines": {
+        "edge_tts": "Microsoft (ru-RU-SvetlanaNeural)",
+        "pyttsx3": "Офлайн",
+        "openai_tts": "OpenAI (требует ключ)"
+      },
+      "voice_name": "ru-RU-SvetlanaNeural",
+      "rate": 160,
+      "language": "ru"
+    },
+    "wake_word": {
+      "enabled": false,
+      "word": "аура"
+    }
+  },
+  "memory": {
+    "_comment": "Память, история, самообучение — только сообщения пользователя",
+    "db_path": "~/.aura_os/aura.db",
+    "memory_dir": "~/.aura_os/memory",
+    "auto_compress_after_messages": 8,
+    "auto_learn": true,
+    "max_quick_facts": 50,
+    "user_only_storage": true,
+    "_user_only_note": "В БД сохраняются только сообщения пользователя, ответы ИИ игнорируются",
+    "scheduled_compression": {
+      "enabled": true,
+      "times": [
+        "12:00",
+        "00:00"
+      ],
+      "_note": "Сжатие сессии в конспект дня по расписанию"
+    },
+    "embeddings": {
+      "enabled": false,
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "_note": "Включить после установки Ollama: ollama pull nomic-embed-text"
+    },
+    "daily_deduplication": {
+      "enabled": true,
+      "auto_compress_at_hour": 23,
+      "max_daily_sessions": 10,
+      "min_messages_for_compress": 4
+    },
+    "memory_search": {
+      "auto_search_enabled": true,
+      "max_results": 5,
+      "semantic_search": true,
+      "triggers_past": [
+        "напомни",
+        "вспомни",
+        "помнишь",
+        "найди",
+        "поищи",
+        "делали",
+        "сделали",
+        "вели",
+        "обсуждали",
+        "говорили",
+        "проект",
+        "в прошлый раз",
+        "раньше",
+        "история",
+        "что было",
+        "где остановились",
+        "продолжи"
+      ],
+      "neural_processing": {
+        "enabled": true,
+        "model": "same_as_agent",
+        "temperature": 0.5,
+        "max_tokens": 1024
+      }
+    }
+  },
+  "calendar": {
+    "_comment": "Календарь и напоминания",
+    "reminder_check_interval_seconds": 60,
+    "default_reminder_advance_minutes": 10,
+    "categories": {
+      "drr": {"name": "День рождения", "emoji": "🎂", "recurring": "yearly"},
+      "zad": {"name": "Задача", "emoji": "📋", "recurring": null},
+      "nap": {"name": "Напоминание", "emoji": "🔔", "recurring": null},
+      "evt": {"name": "Событие", "emoji": "📅", "recurring": null},
+      "pln": {"name": "План", "emoji": "📌", "recurring": null},
+      "med": {"name": "Здоровье", "emoji": "🏥", "recurring": null}
+    }
+  },
+  "web_search": {
+    "_comment": "Поиск в интернете и погода",
+    "enabled": true,
+    "engine": "duckduckgo",
+    "openweathermap_key": "",
+    "newsapi_key": "",
+    "rate_limiting": {
+      "min_delay_seconds": 0.5,
+      "max_delay_seconds": 1.0,
+      "max_requests_per_minute": 20,
+      "use_jitter": true
+    },
+    "search": {
+      "default_results": 5,
+      "max_results": 10,
+      "region": "wt-wt",
+      "safe_search": "moderate",
+      "time_range": null
+    },
+    "triggers": {
+      "search": [
+        "найди в интернете",
+        "загугли",
+        "что такое",
+        "сколько стоит",
+        "как работает",
+        "рецепт",
+        "инструкция",
+        "рейтинг",
+        "топ"
+      ],
+      "news": [
+        "новости",
+        "что нового",
+        "свежие новости",
+        "что в мире",
+        "что происходит",
+        "главные новости",
+        "события"
+      ],
+      "weather": [
+        "погода",
+        "температура",
+        "будет дождь",
+        "прогноз погоды",
+        "погода на завтра",
+        "погода на неделю",
+        "брать зонт"
+      ]
+    },
+    "weather": {
+      "default_city": "Москва",
+      "units": "metric",
+      "language": "ru"
+    }
+  },
+  "google_calendar": {
+    "_comment": "Google Calendar sync (OAuth). Fix consent first!",
+    "enabled": true,
+    "credentials_file": "credentials.json",
+    "calendar_id": "primary",
+    "sync": {
+      "interval_minutes": 30,
+      "future_days": 90,
+      "past_days": 7,
+      "auto_start": true
+    },
+    "colors": {
+      "drr": "4",
+      "zad": "1",
+      "nap": "5"
+    }
+  },
+  "integrations": {
+    "_comment": "Внешние интеграции",
+    "telegram": {
+      "enabled": true
+    },
+    "google_calendar": {
+      "enabled": false,
+      "auto_sync": true
+    }
+  },
+  "web_interface": {
+    "_comment": "Веб-интерфейс",
+    "host": "0.0.0.0",
+    "port": 8000,
+    "tailscale": {
+      "enabled": true,
+      "hostname": "aura-os"
+    }
+  },
+  "skills": {
+    "_comment": "Система скиллов",
+    "skills_dir": "skills",
+    "auto_discover": true,
+    "max_retries": 3,
+    "test_timeout": 30
+  },
+  "monitoring": {
+    "_comment": "Мониторинг стабильности",
+    "check_interval_seconds": 60,
+    "max_errors_per_minute": 5,
+    "max_total_errors": 50,
+    "backup_before_changes": true,
+    "auto_rollback_on_crash": true,
+    "max_backups": 10
+  },
+  "briefing": {
+    "_comment": "Ежедневный брифинг от Ауры",
+    "enabled": true,
+    "time": "09:00",
+    "timezone": "Europe/Moscow",
+    "include_weather": true,
+    "include_calendar": true,
+    "include_birthdays": true,
+    "include_news": true,
+    "weather_city": "Moscow"
+  }
+}
