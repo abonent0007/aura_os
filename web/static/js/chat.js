@@ -2,6 +2,59 @@
 
 let audioPlayer = null;
 let chatMode = 'aura';
+let recognition = null;
+let isListening = false;
+
+// ── Голосовой ввод (Web Speech API) ──
+function toggleVoiceInput() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        alert('Голосовой ввод не поддерживается браузером. Используйте Chrome.');
+        return;
+    }
+
+    if (isListening) {
+        stopVoiceInput();
+        return;
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SR();
+    recognition.lang = 'ru-RU';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+        let text = '';
+        for (let i = 0; i < event.results.length; i++) {
+            text += event.results[i][0].transcript;
+        }
+        document.getElementById('chatInput').value = text;
+        if (event.results[0].isFinal) {
+            stopVoiceInput();
+            setTimeout(() => sendChatMessage(), 300);
+        }
+    };
+
+    recognition.onerror = () => stopVoiceInput();
+    recognition.onend = () => stopVoiceInput();
+
+    recognition.start();
+    isListening = true;
+    document.getElementById('btn-mic').textContent = '🔴';
+    document.getElementById('btn-mic').style.background = '#ff5252';
+    document.getElementById('chatInput').placeholder = 'Говорите...';
+}
+
+function stopVoiceInput() {
+    if (recognition) {
+        recognition.stop();
+        recognition = null;
+    }
+    isListening = false;
+    document.getElementById('btn-mic').textContent = '🎤';
+    document.getElementById('btn-mic').style.background = '';
+    document.getElementById('chatInput').placeholder = 'Напиши сообщение...';
+}
 
 function setChatMode(mode) {
     chatMode = mode;

@@ -166,9 +166,8 @@
                         rows="2"
                         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}"
                     ></textarea>
-                    <button class="btn btn-primary" onclick="sendChatMessage()">
-                        📤 Отправить
-                    </button>
+                    <button class="btn btn-primary" id="btn-mic" onclick="toggleVoiceInput()" title="Голосовой ввод">🎤</button>
+                    <button class="btn btn-primary" onclick="sendChatMessage()">Отправить</button>
                 </div>
             </div>
         </section>
@@ -299,7 +298,7 @@
     
     <script src="/static/js/app.js?v=3"></script>
     <script src="/static/js/dashboard.js?v=5"></script>
-    <script src="/static/js/chat.js?v=8"></script>
+    <script src="/static/js/chat.js?v=9"></script>
     <script src="/static/js/logs.js?v=3"></script>
     <script src="/static/js/skills.js?v=6"></script>
     <script src="/static/js/backups.js?v=3"></script>
