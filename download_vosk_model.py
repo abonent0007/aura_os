@@ -3,7 +3,7 @@
 import os, sys, zipfile, urllib.request
 from pathlib import Path
 
-MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+MODEL_URL = "https://github.com/kercre123/vosk-models/raw/main/vosk-model-small-ru-0.22.zip"
 MODELS_DIR = Path(__file__).parent / "models"
 MODEL_NAME = "vosk-model-small-ru-0.22"
 ZIP_PATH = MODELS_DIR / "vosk-model-ru.zip"
