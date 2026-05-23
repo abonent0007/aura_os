@@ -1,0 +1,14 @@
+{
+  "name": "web_search_skill",
+  "version": "1.0.0",
+  "author": "AURA OS",
+  "description": "Встроенный скилл для поиска в интернете и получения погоды",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.10",
+  "triggers": ["найди", "погода", "новости", "загугли", "поиск"],
+  "permissions": ["network"],
+  "auto_created": false,
+  "stability": "stable",
+  "created_at": "2026-05-14T00:00:00"
+}

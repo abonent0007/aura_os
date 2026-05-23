@@ -1,0 +1,81 @@
+{
+  "version": "1.0.1",
+  "updated_at": "2026-05-23T16:56:07.994114",
+  "skills": {
+    "calendar_skill": {
+      "path": "builtin\\calendar_skill",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-05-23T16:56:07.979342",
+      "errors": 0,
+      "version": "2.0.0"
+    },
+    "web_search_skill": {
+      "path": "builtin\\web_search_skill",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-05-23T16:56:07.981960",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "content-sanitizer": {
+      "path": "custom\\content-sanitizer",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-05-23T16:56:07.984006",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "persona-extractor": {
+      "path": "custom\\persona-extractor",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-05-23T16:56:07.990022",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "session-analyzer": {
+      "path": "custom\\session-analyzer",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-05-23T16:56:07.991937",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "url-content-fetcher": {
+      "path": "custom\\url-content-fetcher",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-05-23T16:56:07.994083",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "moex_stock_tracker": {
+      "path": "custom\\moex_stock_tracker",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-05-23T16:56:07.988041",
+      "errors": 0,
+      "version": "3.0.0"
+    },
+    "moex-stock-tracker": {
+      "path": "custom\\moex-stock-tracker",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-05-19T16:09:59.898874",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "kazan_direction_trains": {
+      "path": "custom\\kazan_direction_trains",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-05-23T16:56:07.985974",
+      "errors": 0,
+      "version": "1.1.0"
+    }
+  },
+  "creation_history": [
+    "2026-05-18: Импортированы 4 скилла из agent-workspace-creator (OpenClaw)"
+  ]
+}

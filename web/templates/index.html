@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA OS Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=9">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+</head>
+<body>
+    <!-- Боковая панель -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">🤖 AURA OS</div>
+            <div class="version">v1.0.1</div>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="#dashboard" class="nav-item active" data-page="dashboard">
+                <span class="nav-icon">📊</span>
+                <span>Дашборд</span>
+            </a>
+            <a href="#chat" class="nav-item" data-page="chat">
+                <span class="nav-icon">💬</span>
+                <span>Общение</span>
+            </a>
+            <a href="#calendar" class="nav-item" data-page="calendar">
+                <span class="nav-icon">📅</span>
+                <span>Календарь</span>
+            </a>
+            <a href="#skills" class="nav-item" data-page="skills">
+                <span class="nav-icon">🧩</span>
+                <span>Скиллы</span>
+            </a>
+            <a href="#logs" class="nav-item" data-page="logs">
+                <span class="nav-icon">📋</span>
+                <span>Логи</span>
+            </a>
+            <a href="#backups" class="nav-item" data-page="backups">
+                <span class="nav-icon">💾</span>
+                <span>Бекапы</span>
+            </a>
+            <a href="#settings" class="nav-item" data-page="settings">
+                <span class="nav-icon">⚙️</span>
+                <span>Настройки</span>
+            </a>
+        </nav>
+        
+        <div class="sidebar-footer">
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot"></span>
+                <span class="status-text">Подключено</span>
+            </div>
+            <div class="network-info">
+                <a href="{{ local_url }}" target="_blank" class="net-link">🏠 Локально</a>
+                {% if tailscale_url %}
+                <a href="{{ tailscale_url }}" target="_blank" class="net-link">🔗 Tailscale</a>
+                {% endif %}
+            </div>
+        </div>
+    </aside>
+    
+    <!-- Основной контент -->
+    <main class="main-content">
+        <!-- Дашборд -->
+        <section id="page-dashboard" class="page active">
+            <header class="page-header">
+                <h1>📊 Дашборд</h1>
+                <div class="header-actions">
+                    <button class="btn btn-sm" onclick="refreshDashboard()">🔄 Обновить</button>
+                </div>
+            </header>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">🧩</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-skills">0</div>
+                        <div class="stat-label">Скиллов</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📅</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-events">0</div>
+                        <div class="stat-label">Событий</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💬</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-messages">0</div>
+                        <div class="stat-label">Сообщений</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⏱</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-uptime">0ч</div>
+                        <div class="stat-label">Аптайм</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>📈 Активность (24ч)</h3>
+                    <canvas id="activityChart"></canvas>
+                </div>
+                <div class="card">
+                    <h3>🧠 Память</h3>
+                    <canvas id="memoryChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>🔗 Сетевой доступ</h3>
+                <div class="network-grid">
+                    <div class="network-card">
+                        <div class="net-label">Локальный доступ</div>
+                        <code>http://localhost:{{ port }}</code>
+                    </div>
+                    {% if tailscale_ip %}
+                    <div class="network-card">
+                        <div class="net-label">Tailscale IP</div>
+                        <code>http://{{ tailscale_ip }}:{{ port }}</code>
+                    </div>
+                    <div class="network-card">
+                        <div class="net-label">Tailscale Hostname</div>
+                        <code>http://{{ tailscale_hostname }}:{{ port }}</code>
+                    </div>
+                    {% else %}
+                    <div class="network-card disabled">
+                        <div class="net-label">Tailscale (не настроен)</div>
+                        <code>Установите: curl -fsSL https://tailscale.com/install.sh | sh</code>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        
+        <!-- Чат -->
+        <section id="page-chat" class="page">
+            <header class="page-header">
+                <h1>Общение с Аурой</h1>
+                <div class="header-actions">
+                    <button class="btn btn-sm" id="btn-mode-aura" onclick="setChatMode('aura')" style="background:var(--accent);color:white">Твоя Аура</button>
+                    <button class="btn btn-sm" id="btn-mode-expert" onclick="setChatMode('expert')">Эксперт</button>
+                </div>
+            </header>
+            
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-message assistant">
+                        <div class="message-avatar">👩</div>
+                        <div class="message-content">
+                            Привет! Я Аура. Чем могу помочь?
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-area">
+                    <textarea 
+                        id="chatInput" 
+                        placeholder="Напиши сообщение..."
+                        rows="2"
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}"
+                    ></textarea>
+                    <button class="btn btn-primary" onclick="sendChatMessage()">
+                        📤 Отправить
+                    </button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Календарь -->
+        <section id="page-calendar" class="page">
+            <header class="page-header">
+                <h1>Календарь</h1>
+                <div class="header-actions">
+                    <button class="btn btn-sm" onclick="calendarPrevMonth()">&#9664;</button>
+                    <span id="calendarMonthLabel" style="font-weight:600;min-width:160px;text-align:center"></span>
+                    <button class="btn btn-sm" onclick="calendarNextMonth()">&#9654;</button>
+                    <button class="btn btn-sm" id="btn-view-month" onclick="switchCalendarView('month')">Месяц</button>
+                    <button class="btn btn-sm" id="btn-view-week" onclick="switchCalendarView('week')">Неделя</button>
+                    <button class="btn btn-sm btn-primary" onclick="syncCalendar()">Синхронизировать</button>
+                </div>
+            </header>
+            <div class="calendar-legend" id="calendarLegend">
+                <span class="legend-item"><span class="legend-dot dot-birthday"></span> ДР</span>
+                <span class="legend-item"><span class="legend-dot dot-task"></span> Задачи</span>
+                <span class="legend-item"><span class="legend-dot dot-reminder"></span> Напом.</span>
+                <span class="legend-item"><span class="legend-dot dot-event"></span> События</span>
+                <span class="legend-item"><span class="legend-dot dot-plan"></span> Планы</span>
+                <span class="legend-item"><span class="legend-dot dot-health"></span> Здоровье</span>
+            </div>
+            <div class="calendar-grid" id="calendarGrid">
+                <p>Загрузка...</p>
+            </div>
+            <div class="calendar-day-detail" id="calendarDayDetail" style="display:none">
+                <h3 id="calendarDayTitle"></h3>
+                <div id="calendarDayEvents"></div>
+            </div>
+        </section>
+        
+        <!-- Скиллы -->
+        <section id="page-skills" class="page">
+            <header class="page-header">
+                <h1>🧩 Скиллы</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="showCreateSkillModal()">
+                        ✨ Создать скилл
+                    </button>
+                </div>
+            </header>
+            
+            <div class="skills-stats" id="skillsStats"></div>
+            <div class="skills-grid" id="skillsGrid">
+                <p>Загрузка...</p>
+            </div>
+            
+            <!-- Модальное окно создания скилла -->
+            <div class="modal" id="createSkillModal">
+                <div class="modal-content">
+                    <h2>Создать новый скилл</h2>
+                    <p>Опиши, что должен делать скилл. Нейросеть сама напишет код.</p>
+                    <textarea id="skillDescription" rows="4" placeholder="Например: скилл для отправки email через SMTP..."></textarea>
+                    <div class="modal-actions">
+                        <button class="btn" onclick="hideCreateSkillModal()">Отмена</button>
+                        <button class="btn btn-primary" onclick="createSkill()">Создать</button>
+                    </div>
+                    <div id="skillCreationStatus"></div>
+                </div>
+            </div>
+
+            <!-- Модальное окно редактора кода -->
+            <div class="modal" id="codeEditorModal">
+                <div class="modal-content" style="max-width:800px">
+                    <h2 id="codeEditorTitle">Редактор кода</h2>
+                    <div style="display:flex;gap:8px;margin-bottom:8px">
+                        <button class="btn btn-sm" id="btn-edit-manifest" onclick="switchEditorTab('manifest')">manifest.json</button>
+                        <button class="btn btn-sm" id="btn-edit-skillmd" onclick="switchEditorTab('skillmd')">SKILL.md</button>
+                        <button class="btn btn-sm" id="btn-edit-skillpy" onclick="switchEditorTab('skillpy')">skill.py</button>
+                    </div>
+                    <textarea id="codeEditorTextarea" rows="20" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px;resize:vertical"></textarea>
+                    <div class="modal-actions">
+                        <button class="btn" onclick="closeCodeEditor()">Закрыть</button>
+                        <button class="btn btn-primary" onclick="saveSkillCode()">Сохранить</button>
+                    </div>
+                    <div id="codeEditorStatus"></div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Логи -->
+        <section id="page-logs" class="page">
+            <header class="page-header">
+                <h1>📋 Логи</h1>
+                <div class="header-actions">
+                    <select id="logLevelFilter" onchange="loadLogs()">
+                        <option value="">Все уровни</option>
+                        <option value="info">ℹ️ Info</option>
+                        <option value="warning">⚠️ Warning</option>
+                        <option value="error">❌ Error</option>
+                    </select>
+                    <button class="btn btn-sm" onclick="clearLogs()">🗑️ Очистить</button>
+                </div>
+            </header>
+            <div class="log-container" id="logContainer">
+                <p>Загрузка...</p>
+            </div>
+        </section>
+        
+        <!-- Бекапы -->
+        <section id="page-backups" class="page">
+            <header class="page-header">
+                <h1>💾 Бекапы и откаты</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="createBackup()">
+                        📦 Создать бекап
+                    </button>
+                </div>
+            </header>
+            <div class="backup-list" id="backupList">
+                <p>Загрузка...</p>
+            </div>
+        </section>
+        
+        <!-- Настройки -->
+        <section id="page-settings" class="page">
+            <header class="page-header">
+                <h1>⚙️ Настройки</h1>
+            </header>
+            <div class="settings-container" id="settingsContainer">
+                <p>Загрузка...</p>
+            </div>
+        </section>
+    </main>
+    
+    <script src="/static/js/app.js?v=3"></script>
+    <script src="/static/js/dashboard.js?v=5"></script>
+    <script src="/static/js/chat.js?v=8"></script>
+    <script src="/static/js/logs.js?v=3"></script>
+    <script src="/static/js/skills.js?v=6"></script>
+    <script src="/static/js/backups.js?v=3"></script>
+    <script src="/static/js/settings.js?v=3"></script>
+    <script src="/static/js/calendar.js?v=6"></script>
+</body>
+</html>

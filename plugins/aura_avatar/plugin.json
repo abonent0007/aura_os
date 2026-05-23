@@ -1,0 +1,30 @@
+{
+    "name": "AURA Avatar",
+    "version": "1.0.0",
+    "author": "AURA OS Community",
+    "description": "Визуальная анимация лица с синхронизацией губ для TTS. Плавающее окно с 5 положениями рта и idle-состоянием.",
+    "main": "aura_avatar.py",
+    "class": "AuraAvatar",
+    "dependencies": ["Pillow"],
+    "hooks": {
+        "on_tts_start": "speak",
+        "on_tts_end": "stop",
+        "on_shutdown": "shutdown"
+    },
+    "assets": {
+        "required": [
+            "mouth_ah.png",
+            "mouth_ee.png",
+            "mouth_mpb.png",
+            "mouth_fv.png",
+            "mouth_silence.png",
+            "face_idle.png"
+        ],
+        "optional": []
+    },
+    "settings": {
+        "avatar_size": [400, 400],
+        "window_position": "bottom-right",
+        "base_duration": 0.08
+    }
+}

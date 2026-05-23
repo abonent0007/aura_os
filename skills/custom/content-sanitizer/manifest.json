@@ -1,0 +1,14 @@
+{
+  "name": "content-sanitizer",
+  "version": "1.0.0",
+  "author": "AURA OS (адаптировано из agent-workspace-creator)",
+  "description": "Очищает чувствительные данные: телефоны, email, адреса, паспорта, ключи API из текста перед сохранением в БД",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.10",
+  "triggers": ["очисти данные", "проверь на приватность", "удали личную информацию"],
+  "permissions": ["filesystem"],
+  "auto_created": true,
+  "stability": "testing",
+  "created_at": "2026-05-18T00:00:00"
+}
