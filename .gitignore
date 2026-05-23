@@ -1,0 +1,44 @@
+# Секреты (не публиковать!)
+.env
+credentials.json
+token.json
+token.pickle
+# Шаблоны можно публиковать:
+# .env.example — OK
+# credentials.json.example — OK
+*.key
+*.pem
+*.p12
+
+# Базы данных
+~/.aura_os/
+*.db
+*.sqlite3
+*.sqlite
+
+# Модели
+models/*
+!models/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Логи
+logs/*
+!logs/.gitkeep
+
+# Бекапы (кроме индекса)
+skills/backups/*/
+!skills/backups/index.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
