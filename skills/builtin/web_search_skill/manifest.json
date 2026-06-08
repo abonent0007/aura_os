@@ -1,14 +1,14 @@
 {
   "name": "web_search_skill",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "author": "AURA OS",
-  "description": "Встроенный скилл для поиска в интернете и получения погоды",
+  "description": "Поиск в интернете через DuckDuckGo (ddgs 8.x): текст, новости",
   "category": "tools",
-  "dependencies": [],
-  "python_version": ">=3.10",
-  "triggers": ["найди", "погода", "новости", "загугли", "поиск"],
+  "dependencies": ["ddgs>=8.0"],
+  "python_version": ">=3.11",
+  "triggers": ["найди", "загугли", "поиск", "search", "новости"],
   "permissions": ["network"],
   "auto_created": false,
   "stability": "stable",
-  "created_at": "2026-05-14T00:00:00"
+  "created_at": "2026-06-07T00:00:00"
 }
