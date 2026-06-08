@@ -1,15 +1,15 @@
-# AURA OS v1.0.1 — Зависимости
-# Установка: pip install -r requirements.txt
+# AURA OS v1.0.3 — Dependencies (Python 3.11)
+# pip install -r requirements.txt
 
-# Ядро
-openai>=1.55.0
+# Core
+openai>=1.55.0,<2.0
 python-dotenv>=1.0.0
 
-# Голос (STT/TTS)
+# Voice (STT/TTS)
 vosk>=0.3.45
 pyttsx3>=2.90
 sounddevice>=0.5.0
-numpy>=1.26.0
+numpy>=1.26.0,<2.0
 edge-tts>=6.1.0
 SpeechRecognition>=3.16.0
 
@@ -19,30 +19,30 @@ google-auth-oauthlib>=1.2.0
 google-auth-httplib2>=0.2.0
 google-api-python-client>=2.150.0
 
-# Интернет-поиск и HTTP
+# Web search & HTTP
 ddgs>=9.0.0
-httpx>=0.27.0
+httpx>=0.27.0,<1.0
 beautifulsoup4>=4.12.0
 lxml>=5.3.0
 
 # Telegram Bot
 python-telegram-bot>=21.7
 
-# Веб-интерфейс
-fastapi>=0.115.0
-uvicorn[standard]>=0.34.0
-jinja2>=3.1.0
+# Web interface
+fastapi>=0.115.0,<1.0
+uvicorn[standard]>=0.34.0,<1.0
+jinja2>=3.1.0,<3.2
 aiofiles>=24.1.0
 websockets>=14.1
 python-multipart>=0.0.18
 
-# Мониторинг
+# Monitoring
 psutil>=6.1.0
 loguru>=0.7.0
 
-# Аудио
+# Audio
 pydub>=0.25.0
 
-# Плагины
-sentence-transformers>=3.0.0
-Pillow>=10.0.0
+# Plugins (optional — install when needed)
+# sentence-transformers>=3.0.0   # Orchestrator deduplication
+# Pillow>=10.0.0                  # Aura Avatar

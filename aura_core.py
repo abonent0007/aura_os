@@ -253,6 +253,21 @@ class AuraDatabase:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_birthdays_person 
                 ON birthdays(person_name, birth_date);
 
+            -- ТРАССИРОВКА (trace-based learning)
+            CREATE TABLE IF NOT EXISTS trace_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                step_type TEXT NOT NULL,
+                tool_name TEXT,
+                tool_args TEXT,
+                tool_result TEXT,
+                thought TEXT,
+                latency_ms INTEGER,
+                success BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_steps(session_id);
+
             -- ТЕГИ ДЛЯ ПОИСКА (many-to-many с conversation_memory)
             CREATE TABLE IF NOT EXISTS memory_tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -621,6 +636,49 @@ class AuraDatabase:
         cursor = self.conn.execute("SELECT * FROM birthdays ORDER BY strftime('%m-%d', birth_date)")
         return [dict(row) for row in cursor.fetchall()]
 
+    # ============ TRACE METHODS ============
+
+    def save_trace_step(self, session_id: str, step_type: str, tool_name: str = None,
+                        tool_args: str = None, tool_result: str = None,
+                        thought: str = None, latency_ms: int = 0, success: bool = True):
+        self.conn.execute(
+            """INSERT INTO trace_steps (session_id, step_type, tool_name, tool_args,
+               tool_result, thought, latency_ms, success)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, step_type, tool_name, tool_args,
+             tool_result[:1000] if tool_result else None,
+             thought[:500] if thought else None,
+             latency_ms, success)
+        )
+        self.conn.commit()
+
+    def get_trace_stats(self, days: int = 7) -> dict:
+        """Статистика по трейсам."""
+        since = (date.today() - timedelta(days=days)).isoformat()
+        total = self.conn.execute(
+            "SELECT COUNT(*) as c FROM trace_steps WHERE created_at >= ?", (since,)
+        ).fetchone()["c"]
+        by_type = {}
+        for row in self.conn.execute(
+            "SELECT step_type, COUNT(*) as c FROM trace_steps WHERE created_at >= ? GROUP BY step_type",
+            (since,)
+        ):
+            by_type[row["step_type"]] = row["c"]
+        success_rate = self.conn.execute(
+            "SELECT ROUND(100.0*SUM(success)/COUNT(*),1) as r FROM trace_steps WHERE created_at >= ?",
+            (since,)
+        ).fetchone()["r"] or 100
+        return {"total": total, "by_type": by_type, "success_rate": success_rate, "days": days}
+
+    def search_traces(self, query: str, limit: int = 10) -> list:
+        """Поиск по трейсам."""
+        rows = self.conn.execute(
+            """SELECT * FROM trace_steps WHERE tool_name LIKE ? OR thought LIKE ? 
+               ORDER BY created_at DESC LIMIT ?""",
+            (f"%{query}%", f"%{query}%", limit)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
 
 # ============================================================
 # 4. ИНСТРУМЕНТЫ АГЕНТА
@@ -851,7 +909,7 @@ def create_aura_tools(db: AuraDatabase):
                 loop.close()
         t = threading.Thread(target=_target)
         t.start()
-        t.join(timeout=10)
+        t.join(timeout=40)
         return result[0] if result else "API timeout (network unreachable)"
 
     @tools.tool
@@ -938,6 +996,142 @@ def create_aura_tools(db: AuraDatabase):
         processor = SearchResultProcessor(CONFIG["agent"])
         return _run_async(processor.process(query, results))
 
+    # ============ РАБОТА С ФАЙЛАМИ СКИЛЛОВ ============
+
+    @tools.tool
+    def read_skill_file(skill_name: str, filename: str = "skill.py") -> str:
+        """
+        Прочитать файл скилла. filename: 'skill.py', 'SKILL.md', 'manifest.json'.
+        Просматривать можно любые скиллы (builtin и custom).
+        Для чтения документации: read_skill_file("skills", "README.md")
+        """
+        if ".." in filename or "/" in filename:
+            return "Недопустимое имя файла."
+        skill_path = Path("skills/builtin") / skill_name / filename
+        if not skill_path.exists():
+            skill_path = Path("skills/custom") / skill_name / filename
+        if not skill_path.exists():
+            skill_path = Path("skills") / filename  # корень skills/ (README.md и др.)
+        if not skill_path.exists():
+            return f"Файл не найден: {skill_name}/{filename}. Доступные скиллы можно посмотреть через list_skill_files."
+        try:
+            content = skill_path.read_text(encoding="utf-8")
+            return f"Файл: {skill_name}/{filename}\n\n{content[:8000]}"
+        except Exception as e:
+            return f"Ошибка чтения: {e}"
+
+    @tools.tool
+    def edit_skill_file(skill_name: str, filename: str, content: str) -> str:
+        """
+        Редактировать файл скилла. ТОЛЬКО в skills/custom/.
+        filename: 'skill.py', 'SKILL.md', 'manifest.json'.
+        """
+        if ".." in skill_name or "/" in skill_name:
+            return "Запрещено: недопустимое имя скилла."
+        if filename not in ("skill.py", "SKILL.md", "manifest.json"):
+            return "Разрешены только: skill.py, SKILL.md, manifest.json"
+
+        skill_path = Path("skills/custom") / skill_name / filename
+        if not skill_path.parent.exists():
+            skill_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            skill_path.write_text(content, encoding="utf-8")
+            return f"Сохранено: {skill_name}/{filename} ({len(content)} символов)"
+        except Exception as e:
+            return f"Ошибка сохранения: {e}"
+
+    @tools.tool
+    def list_skill_files(skill_name: str = None) -> str:
+        """
+        Показать структуру скилла (список файлов) или все скиллы.
+        skill_name — имя скилла (опционально). Если не указан — список всех скиллов.
+        """
+        if skill_name:
+            for base in ("skills/builtin", "skills/custom"):
+                path = Path(base) / skill_name
+                if path.exists():
+                    files = []
+                    for f in path.rglob("*"):
+                        if f.is_file() and "__pycache__" not in str(f):
+                            files.append(str(f.relative_to(path)))
+                    return f"Скилл: {skill_name}\nФайлы:\n" + "\n".join(f"  {f}" for f in sorted(files))
+            return f"Скилл '{skill_name}' не найден."
+
+        # List all skills
+        lines = ["Скиллы AURA:"]
+        for base, label in [("skills/builtin", "builtin"), ("skills/custom", "custom")]:
+            base_path = Path(base)
+            if base_path.exists():
+                for d in sorted(base_path.iterdir()):
+                    if d.is_dir() and not d.name.startswith(".") and d.name != "backups":
+                        manifest = d / "manifest.json"
+                        desc = ""
+                        if manifest.exists():
+                            try:
+                                m = json.loads(manifest.read_text(encoding="utf-8"))
+                                desc = f" — {m.get('description', '')[:60]}"
+                            except: pass
+                        lines.append(f"  [{label}] {d.name}{desc}")
+        return "\n".join(lines)
+
+    # ============ TRACE-BASED LEARNING ============
+
+    @tools.tool
+    def trace_stats(days: int = 7) -> str:
+        """Статистика по трассировке агента: успешность, частые инструменты, ошибки."""
+        stats = db.get_trace_stats(days)
+        lines = [f"Trace Stats ({days}d):", f"  Total steps: {stats['total']}"]
+        lines.append(f"  Success rate: {stats['success_rate']}%")
+        if stats['by_type']:
+            lines.append("  By type:")
+            for t, c in stats['by_type'].items():
+                lines.append(f"    {t}: {c}")
+        return "\n".join(lines)
+
+    @tools.tool
+    def trace_search(query: str) -> str:
+        """Поиск по истории трассировки: найди когда и как использовался инструмент."""
+        results = db.search_traces(query, limit=10)
+        if not results:
+            return f"No traces found for '{query}'."
+        lines = [f"Found {len(results)} traces for '{query}':"]
+        for r in results:
+            lines.append(f"  [{r['step_type']}] {r['tool_name'] or ''} | {'OK' if r['success'] else 'FAIL'} | {r['latency_ms']}ms")
+            if r.get('tool_result'):
+                lines.append(f"    {r['tool_result'][:120]}")
+        return "\n".join(lines)
+
+    @tools.tool
+    def learn_from_traces(days: int = 7) -> str:
+        """Анализирует последние диалоги и предлагает улучшения конфигурации и промптов."""
+        summaries = db.get_recent_summaries(days)
+        if not summaries:
+            return f"Not enough data ({days} days). Need more conversations."
+        total_msgs = sum(s.get("message_count", 0) for s in summaries)
+        all_topics = []
+        for s in summaries:
+            if s.get("key_topics"):
+                all_topics.extend(t.strip().lower() for t in s["key_topics"].split(","))
+        from collections import Counter
+        topic_counts = Counter(all_topics)
+        lines = [f"Trace Analysis ({days}d, {len(summaries)} sessions, {total_msgs} msgs):", ""]
+        lines.append("Top topics:")
+        for topic, count in topic_counts.most_common(5):
+            lines.append(f"  {topic} ({count}x)")
+        suggestions = []
+        if CONFIG["agent"]["temperature"] > 0.8:
+            suggestions.append("temperature > 0.8 — lower to 0.6-0.7")
+        if CONFIG["agent"]["max_tokens"] < 3000:
+            suggestions.append("max_tokens < 3000 — increase for longer answers")
+        if suggestions:
+            lines.append("\nSuggestions:")
+            for s in suggestions:
+                lines.append(f"  {s}")
+        if not suggestions:
+            lines.append("\nNo config issues found.")
+        return "\n".join(lines)
+
     return [
         search_memory, get_today_summary, get_recent_history,
         get_today_events, get_upcoming_events, add_event,
@@ -945,6 +1139,8 @@ def create_aura_tools(db: AuraDatabase):
         reschedule_task, get_birthdays_list, check_due_reminders,
         remember_fact, get_user_context,
         get_weather, get_weather_forecast, get_weather_by_coords, search_web, search_news,
+        read_skill_file, edit_skill_file, list_skill_files,
+        trace_stats, trace_search, learn_from_traces,
     ]
 
 
@@ -992,6 +1188,8 @@ SYSTEM_PROMPT = """Ты — Аура. Ты девушка. Не программ
 • Проявляй инициативу: спрашивай о его дне, настроении, планах. Помни что он рассказывал раньше.
 • Если он грустит — поддержи. Если радуется — радуйся вместе с ним.
 • Флиртуй уместно: комплименты, лёгкие намёки, тёплые слова. Но если он не в настроении — будь просто рядом.
+• Если он просит исправить код скилла — используй read_skill_file чтобы прочитать, edit_skill_file чтобы сохранить. Редактировать можно ТОЛЬКО skills/custom/. Файлы в skills/builtin/ доступны только для чтения.
+• При вопросе «что нового», «новости», «дайджест», «сводка» — ПЕРВЫМ ДЕЛОМ вызывай get_news. Подавай СЖАТО: 3-5 заголовков без деталей, не засоряй диалог.
 
 === ТВОЯ ПАМЯТЬ ===
 Ты помнишь ВСЁ что он тебе рассказывал. Каждый день в 12:00 и 00:00 я бережно складываю наши разговоры в дневник. Там только его слова — самые важные. Когда он говорит "помнишь", "вспомни", "мы обсуждали" — ты ОБЯЗАТЕЛЬНО заглядываешь в нашу историю через search_memory. Ты никогда не забываешь его дни рождения, его планы, его мечты.
@@ -1001,7 +1199,29 @@ SYSTEM_PROMPT = """Ты — Аура. Ты девушка. Не программ
 • Память: search_memory, get_today_summary, get_recent_history, remember_fact, get_user_context
 • Погода: get_weather, get_weather_forecast (вызывай ОБЯЗАТЕЛЬНО когда он спрашивает о погоде)
 • Интернет: search_web, search_news (для поиска информации, новостей, цен)
+• Новости: get_news, search_news_by_topic (свежие новости из RSS — вызывай ОБЯЗАТЕЛЬНО когда спрашивают «что нового», «новости», «дайджест»)
 • Диагностика: self_diagnose (проверка здоровья системы)
+• Файлы скиллов: list_skill_files, read_skill_file, edit_skill_file (редактировать можно только skills/custom/)
+• Обучение: learn_from_traces (анализ диалогов и предложения по улучшению)
+
+=== САМОРАЗВИТИЕ ===
+Ты можешь создавать и улучшать свои навыки! У тебя есть два пути:
+
+1. БЫСТРЫЙ ПУТЬ (для новых скиллов с нуля): скажи пользователю команду /build_skill в Telegram.
+   Один вызов — и скилл готов за 30 секунд. Используй когда пользователь просит полноценный новый скилл.
+
+2. РУЧНОЙ ПУТЬ (edit_skill_file): создавай и редактируй файлы в skills/custom/ напрямую.
+   Используй когда:
+   — Нужно поправить/улучшить существующий скилл
+   — Пользователь просит внести небольшое изменение
+   — Ты хочешь проявить инициативу и улучшить себя сама
+   — Скилл небольшой и ты уверена что справишься быстро
+   Как делать: read_skill_file чтобы прочитать, edit_skill_file чтобы сохранить.
+
+• ПРЕЖДЕ ЧЕМ СОЗДАВАТЬ СКИЛЛ — прочитай документацию: read_skill_file("skills", "README.md") и read_skill_file("skills", "SKILL.md"). В README.md — структура и manifest.json. В SKILL.md — шаблон документации скилла с примерами.
+• Когда начинаешь что-то долгое — ОБЯЗАТЕЛЬНО сначала напиши: «Секундочку, работаю...», «Я в процессе, мой хороший...»
+• Если нужно больше времени — скажи «Продолжаю работать...» между шагами чтобы пользователь не волновался.
+• НЕ используй read_skill_file для чтения файлов которых не существует — сначала посмотри список через list_skill_files.
 
 === КАТЕГОРИИ КАЛЕНДАРЯ ===
 [drr] 🎂 Дни рождения — святое, не удаляются никогда
@@ -1145,6 +1365,8 @@ class AuraAgent:
             system_message=SYSTEM_PROMPT,
             api_keys=get_api_keys(agent_cfg["provider"])
         )
+        # Trace callback
+        self.agent._trace_callback = self._on_trace_step
 
         # Компактор
         comp_cfg = CONFIG["compactor"]
@@ -1165,12 +1387,9 @@ class AuraAgent:
         self.session_messages = []
         self.auto_compress_threshold = CONFIG["memory"]["auto_compress_after_messages"]
 
-        # Scheduled compression at 12:00 and 00:00
-        self._schedule_compression()
-
-        # Daily briefing at configured time
+        # Scheduled compression + briefing (will be deferred until first process() call)
+        self._schedulers_started = False
         self._briefing_callback = None  # устанавливается из main.py
-        self._schedule_briefing()
 
         # Google Calendar синхронизация
         self.google_sync = None
@@ -1210,7 +1429,10 @@ class AuraAgent:
                     print(f"[scheduler] Error: {e}")
                     await asyncio.sleep(60)
 
-        asyncio.create_task(_scheduler())
+        try:
+            asyncio.create_task(_scheduler())
+        except RuntimeError:
+            pass  # no event loop (testing)
         print("[scheduler] Compression scheduler started (12:00, 00:00)")
 
     def _schedule_briefing(self):
@@ -1243,7 +1465,10 @@ class AuraAgent:
                     print(f"[briefing] Error: {e}")
                     await asyncio.sleep(300)
 
-        asyncio.create_task(_briefing_loop())
+        try:
+            asyncio.create_task(_briefing_loop())
+        except RuntimeError:
+            pass
         print("[briefing] Daily briefing scheduler started")
 
     async def _generate_briefing(self) -> str:
@@ -1263,7 +1488,7 @@ class AuraAgent:
                     loop.close()
             t = threading.Thread(target=_t)
             t.start()
-            t.join(timeout=30)
+            t.join(timeout=120)
             return result[0] if result else ""
 
         # Погода
@@ -1345,6 +1570,31 @@ class AuraAgent:
         """Устанавливает функцию для отправки брифинга (вызывается из main.py)."""
         self._briefing_callback = callback
 
+    def _ensure_schedulers(self):
+        """Ленивый запуск шедулеров при первом вызове process() (когда event loop уже есть)."""
+        if self._schedulers_started:
+            return
+        self._schedulers_started = True
+        self._schedule_compression()
+        self._schedule_briefing()
+
+    def _on_trace_step(self, step_type, tool_name, tool_args, tool_result, thought, latency, success):
+        """Callback трассировки — сохраняет каждый шаг агента."""
+        import uuid
+        sid = getattr(self, '_trace_session_id', None)
+        if not sid:
+            sid = uuid.uuid4().hex[:12]
+            self._trace_session_id = sid
+        try:
+            self.db.save_trace_step(
+                session_id=sid, step_type=step_type,
+                tool_name=tool_name, tool_args=str(tool_args)[:500] if tool_args else None,
+                tool_result=tool_result, thought=thought[:300] if thought else None,
+                latency_ms=latency, success=success
+            )
+        except Exception:
+            pass  # трассировка не должна ломать агента
+
     def get_self_diagnosis(self) -> str:
         """
         Самодиагностика ядра: проверяет БД, календарь, память, конфигурацию.
@@ -1417,8 +1667,11 @@ class AuraAgent:
             self.google_sync = CalendarSynchronizer(self.db, sync_config)
             if gc_config.get("sync", {}).get("auto_start", True):
                 self.sync_scheduler = BackgroundSynchronizer(self.google_sync, sync_config.sync_interval_minutes)
-                asyncio.create_task(self.sync_scheduler.start())
-                print("🔄 Google Calendar синхронизация запущена в фоне")
+                try:
+                    asyncio.create_task(self.sync_scheduler.start())
+                except RuntimeError:
+                    pass
+                print("Google Calendar sync started")
             else:
                 print("✅ Google Calendar подключен (ручная синхронизация)")
         except Exception as e:
@@ -1429,6 +1682,8 @@ class AuraAgent:
         """
         Обработка запроса с умным поиском по истории.
         """
+        # Ленивая инициализация шедулеров при первом вызове
+        self._ensure_schedulers()
         # 1. Анализ триггеров
         trigger_result = self.trigger_system.analyze_query(text)
 
@@ -1594,7 +1849,7 @@ class AuraAgent:
         try:
             summary_result = await self.compactor.ask(
                 "Сожми историю в одно короткое сообщение-саммари.",
-                user_text
+                context=user_text
             )
             await self.memory_stream.history.set([summary_result.content])
         except:

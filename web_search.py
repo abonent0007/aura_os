@@ -322,35 +322,26 @@ class DuckDuckGoSearch:
         """Поиск через библиотеку ddgs"""
         try:
             from ddgs import DDGS
-            
-            loop = asyncio.get_event_loop()
-            
-            def _sync_search():
-                results = []
-                with DDGS() as ddgs:
-                    for r in ddgs.text(
-                        query,
-                        region=self.config.region,
-                        safesearch=self.config.safe_search,
-                        timelimit=self.config.time_range,
-                        max_results=max_results
-                    ):
-                        results.append({
-                            "title": r.get("title", ""),
-                            "url": r.get("href", ""),
-                            "snippet": r.get("body", ""),
-                            "source": "ddgs"
-                        })
-                return results
-            
-            results = await loop.run_in_executor(None, _sync_search)
+            results = []
+            with DDGS() as ddgs:
+                for r in ddgs.text(
+                    query,
+                    region=self.config.region,
+                    safesearch=self.config.safe_search,
+                    timelimit=self.config.time_range,
+                    max_results=max_results
+                ):
+                    results.append({
+                        "title": r.get("title", ""),
+                        "url": r.get("href", ""),
+                        "snippet": r.get("body", ""),
+                        "source": "ddgs"
+                    })
             return results[:max_results]
-            
+
         except ImportError:
-            print("⚠️ ddgs не установлен. pip install ddgs")
             return []
-        except Exception as e:
-            print(f"⚠️ DDGS ошибка: {e}")
+        except Exception:
             return []
     
     async def _search_instant_answer(self, query: str, max_results: int) -> List[dict]:
@@ -461,29 +452,26 @@ class WeatherService:
 
     async def get_weather(self, city: str = None, forecast_type: str = "today") -> str:
         city = city or self.default_city
-
         await self.rate_limiter.wait()
 
         if not self.api_key:
-            return (
-                "OpenWeatherMap API key not configured.\n"
-                "1. Register at https://openweathermap.org\n"
-                "2. Get a free API key\n"
-                "3. Add to config.json: web_search.openweathermap_key"
-            )
+            return "OpenWeatherMap API key not configured.\n1. Register at https://openweathermap.org\n2. Get a free API key\n3. Add to .env: OPENWEATHERMAP_API_KEY=..."
 
+        # 2.5 first — free, no geocoding needed, always works
+        try:
+            return await self._get_weather_v25(city, forecast_type)
+        except Exception:
+            pass
+
+        # 3.0 fallback via coordinates
         try:
             lat, lon = await self._geocode(city)
-            if lat is None:
-                return f"City '{city}' not found. Try specifying coordinates or a larger nearby city."
-
-            try:
+            if lat:
                 return await self._get_onecall_v3(lat, lon, forecast_type)
-            except Exception:
-                return await self._get_weather_v25(city, forecast_type)
+        except Exception:
+            pass
 
-        except Exception as e:
-            return f"Weather error: {e}"
+        return f"Weather unavailable for {city}"
 
     async def get_weather_by_coords(self, lat: float, lon: float, forecast_type: str = "today") -> str:
         """Get weather directly by coordinates (no geocoding needed)."""

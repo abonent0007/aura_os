@@ -30,17 +30,25 @@ if sys.platform == "win32":
         pass
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 # Проверяем наличие Telegram токена
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
-from telegram import Update, BotCommand
-from telegram.ext import (
-    Application, ApplicationBuilder,
-    CommandHandler, MessageHandler, filters, ContextTypes
-)
-from telegram.constants import ParseMode
+# Telegram — опциональный импорт (только для режимов bot/all)
+try:
+    from telegram import Update, BotCommand
+    from telegram.ext import (
+        Application, ApplicationBuilder,
+        CommandHandler, MessageHandler, filters, ContextTypes
+    )
+    from telegram.constants import ParseMode
+    HAS_TELEGRAM = True
+except ImportError:
+    HAS_TELEGRAM = False
+    Update = BotCommand = None
+    Application = ApplicationBuilder = CommandHandler = MessageHandler = filters = ContextTypes = None
+    ParseMode = None
 
 from aura_core import AuraAgent, AuraDatabase, CONFIG, check_config
 from aura_voice import VoiceMessageHandler, ResponseMode, InputMode, ResponseFormatDetector
@@ -108,6 +116,8 @@ class ConsoleMode:
 # ============================================================
 class AuraTelegramBot:
     def __init__(self, skill_manager, rollback_manager, system_monitor, skill_builder):
+        if not HAS_TELEGRAM:
+            raise RuntimeError("python-telegram-bot not installed. Run: pip install python-telegram-bot")
         self.aura = AuraAgent()
         self.skill_manager = skill_manager
         self.rollback_manager = rollback_manager
@@ -123,6 +133,7 @@ class AuraTelegramBot:
         
         self.format_detector = ResponseFormatDetector()
         self.chat_states = {}
+        self._shutdown_event = asyncio.Event()
         self.stats = {
             "started_at": datetime.now().isoformat(),
             "messages_processed": 0,
@@ -185,7 +196,7 @@ class AuraTelegramBot:
             BotCommand("expert_chat", "Режим Эксперт (глубокий анализ)"),
         ]
         
-        self.app = ApplicationBuilder().token(BOT_TOKEN).build()
+        self.app = ApplicationBuilder().token(BOT_TOKEN).http_version("1.1").read_timeout(20).write_timeout(20).connect_timeout(20).build()
         await self.app.bot.set_my_commands(commands)
         
         self.app.add_handler(CommandHandler("start", self.cmd_start))
@@ -328,12 +339,14 @@ class AuraTelegramBot:
         except Exception as e:
             await update.message.reply_text(f"Expert error: {e}")
             self.expert_mode = False
+
+    async def cmd_build_skill(self, update, context):
         user_request = " ".join(context.args)
         if not user_request:
-            await update.message.reply_text("🔨 Опиши скилл: /build_skill [описание]")
+            await update.message.reply_text("Опиши скилл: /build_skill [описание]")
             return
         await update.message.reply_chat_action(action="typing")
-        await update.message.reply_text(f"🔨 Создаю скилл: \"{user_request}\"...")
+        await update.message.reply_text(f"Создаю скилл: \"{user_request}\"...")
         
         self.rollback_manager.create_backup(reason="build_skill")
         result = await self.skill_builder.build_skill(user_request)
@@ -341,13 +354,13 @@ class AuraTelegramBot:
         if result["success"]:
             self._integrate_skill_tools()
             await update.message.reply_text(
-                f"✅ Скилл создан!\n"
-                f"📦 Имя: {result['skill_name']}\n"
-                f"🔄 Попыток: {result['iterations']}"
+                f"Скилл создан!\n"
+                f"Имя: {result['skill_name']}\n"
+                f"Попыток: {result['iterations']}"
             )
         else:
             await update.message.reply_text(
-                f"❌ Не удалось\nПопыток: {result['iterations']}\n" +
+                f"Не удалось\nПопыток: {result['iterations']}\n" +
                 "\n".join(f"• {e}" for e in result["errors"][-5:])
             )
     
@@ -467,10 +480,23 @@ class AuraTelegramBot:
         await self.setup()
         print(f"✅ Бот @{(await self.app.bot.get_me()).username} запущен")
         print("   Ctrl+C для остановки\n")
-        await self.app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+
+        await self.app.initialize()
+        await self.app.start()
+        await self.app.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+        )
+        try:
+            await self._shutdown_event.wait()
+        finally:
+            await self.app.updater.stop()
+            await self.app.stop()
+            await self.app.shutdown()
     
     async def stop(self):
         print("\n🛑 Останавливаю бота...")
+        self._shutdown_event.set()
         if self.app:
             await self.app.stop()
             await self.app.shutdown()
@@ -546,27 +572,41 @@ async def main():
     if args.web or args.all:
         from web.server import init_web_server, start_web_server
         
-        temp_bot = AuraTelegramBot(skill_manager, rollback_manager, system_monitor, skill_builder)
-        init_web_server(temp_bot.aura, skill_manager, rollback_manager, system_monitor, skill_builder)
+        aura_agent = AuraAgent()
+        aura_agent.set_briefing_callback(None)
+        init_web_server(aura_agent, skill_manager, rollback_manager, system_monitor, skill_builder)
         
-        # Web всегда в отдельном потоке (uvicorn.run() вызывает asyncio.run() внутри)
         import threading
         threading.Thread(target=start_web_server, kwargs={"port": args.port}, daemon=True).start()
         
         if args.all:
-            await temp_bot.start()
+            if not HAS_TELEGRAM:
+                print("[warn] Telegram not installed. Web only.")
+                while True:
+                    await asyncio.sleep(1)
+            else:
+                def _run_tg():
+                    tg_bot = AuraTelegramBot(skill_manager, rollback_manager, system_monitor, skill_builder)
+                    asyncio.run(tg_bot.start())
+                threading.Thread(target=_run_tg, daemon=True).start()
+                while True:
+                    await asyncio.sleep(1)
         else:
-            # Только Web — держим главный поток
             while True:
                 await asyncio.sleep(1)
     
     elif args.console:
-        temp_bot = AuraTelegramBot(skill_manager, rollback_manager, system_monitor, skill_builder)
-        console = ConsoleMode(temp_bot.aura)
+        aura_agent = AuraAgent()
+        console = ConsoleMode(aura_agent)
         await console.run()
     
     else:
         # Только Telegram
+        if not HAS_TELEGRAM:
+            print("ERROR: python-telegram-bot not installed!")
+            print("Install: pip install python-telegram-bot")
+            print("Or use: python main.py --web")
+            sys.exit(1)
         if not BOT_TOKEN:
             print("ERROR: TELEGRAM_BOT_TOKEN not found!")
             print("Run with --console for console mode")
@@ -589,8 +629,6 @@ async def main():
             await bot.start()
         except KeyboardInterrupt:
             await bot.stop()
-        finally:
-            _stop_goodbyedpi()
 
 if __name__ == "__main__":
     asyncio.run(main())

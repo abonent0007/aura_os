@@ -277,18 +277,49 @@ class TextToSpeech:
         except ImportError:
             print("⚠️ pyttsx3 не установлен: pip install pyttsx3")
             self.tts_engine = None
-    
+
+    @staticmethod
+    def _clean_for_tts(text: str) -> str:
+        """Удалить из текста markdown и эмодзи для чистого голосового произношения."""
+        import re
+        # Markdown bold/italic: **...** *...* __...__
+        text = re.sub(r'\*\*\*(.+?)\*\*\*', r'\1', text)
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'\*(.+?)\*', r'\1', text)
+        text = re.sub(r'__(.+?)__', r'\1', text)
+        text = re.sub(r'~~(.+?)~~', r'\1', text)
+        # Inline code
+        text = re.sub(r'`(.+?)`', r'\1', text)
+        # Markdown links: [text](url) → text
+        text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+        # Markdown headers: ## ... → ...
+        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        # Horizontal rules: --- *** ___ → skip
+        text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+        # Emoji: strip all Unicode emoji and emoticons
+        text = re.sub(r'[\U0001F300-\U0001F9FF\u2600-\u27BF\u2B50\u2700-\u27BF\uFE00-\uFE0F\u200D\u20D0-\u20FF\uD83C-\uDBFF\uDC00-\uDFFF]+', '', text)
+        # ASCII emoticons that edge-tts reads as characters (e.g. "двоеточие скобка")
+        text = re.sub(r'\s?[:;][\-]?[()DPpd/\dOo]', '', text)
+        # HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        # Collapse multiple newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
+
     async def synthesize_to_file(self, text: str, output_path: str = None) -> str:
         """
         Синтез речи в аудиофайл.
         Возвращает путь к файлу (временному или указанному).
         """
+        text = self._clean_for_tts(text)
         if self.engine == "openai_tts":
             return await self._synthesize_openai(text, output_path)
         elif self.engine == "pyttsx3":
             return await self._synthesize_pyttsx3(text, output_path)
         elif self.engine == "edge_tts":
             return await self._synthesize_edge(text, output_path)
+        elif self.engine == "kokoro":
+            return await self._synthesize_kokoro(text, output_path)
         else:
             raise ValueError(f"Неизвестный движок синтеза: {self.engine}")
     
@@ -314,7 +345,7 @@ class TextToSpeech:
         if not api_key:
             raise ValueError("OPENAI_API_KEY не найден в .env")
         
-        client = openai.AsyncOpenAI(api_key=api_key)
+        client = openai.AsyncOpenAI(api_key=api_key, timeout=120.0)
         
         response = await client.audio.speech.create(
             model="tts-1",           # tts-1 быстрее, tts-1-hd качественнее
@@ -357,13 +388,41 @@ class TextToSpeech:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                     output_path = f.name
             
-            communicate = edge_tts.Communicate(text, voice)
+            communicate = edge_tts.Communicate(text, voice, connect_timeout=40, receive_timeout=240)
             await communicate.save(output_path)
             
             return output_path
             
         except ImportError:
             raise ImportError("Установи edge_tts: pip install edge-tts")
+
+    async def _synthesize_kokoro(self, text: str, output_path: str = None) -> str:
+        """Синтез через Kokoro (локальный open-source TTS, женские голоса)."""
+        try:
+            from kokoro import KPipeline
+            import numpy as np
+            import soundfile as sf
+        except ImportError:
+            raise ImportError("pip install kokoro soundfile")
+
+        pipeline = KPipeline(lang_code="a")  # American English — best quality
+        voice = self.voice if self.voice else "af_heart"  # Female voice
+
+        samples = []
+        for _, _, audio in pipeline(text, voice=voice, speed=1.0):
+            samples.append(audio)
+
+        if not samples:
+            raise RuntimeError("Kokoro returned no audio")
+
+        audio = np.concatenate(samples)
+
+        if output_path is None:
+            with __import__('tempfile').NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                output_path = f.name
+
+        sf.write(output_path, audio, 24000)
+        return output_path
 
 
 # ============================================================

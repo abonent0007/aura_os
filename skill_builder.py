@@ -147,7 +147,7 @@ class SkillBuilder:
             config=ag_config.OpenAIConfig(
                 model=model_config.get("model", "deepseek-v4-pro"),
                 temperature=0.5,
-                max_tokens=4096,
+                max_tokens=16000,
                 api_key=os.getenv("DEEPSEEK_API_KEY", ""),
                 base_url="https://api.deepseek.com/v1"
             )
@@ -158,7 +158,7 @@ class SkillBuilder:
             config=ag_config.OpenAIConfig(
                 model=model_config.get("model", "deepseek-v4-pro"),
                 temperature=0.2,
-                max_tokens=2048,
+                max_tokens=8192,
                 api_key=os.getenv("DEEPSEEK_API_KEY", ""),
                 base_url="https://api.deepseek.com/v1"
             )
@@ -169,6 +169,8 @@ class SkillBuilder:
         Полный цикл создания скилла.
         """
         logger.info(f"🔨 Создание скилла: {user_request[:100]}...")
+        print(f"\n⏳ Создаю скилл для: {user_request[:80]}...")
+        print("   Это может занять 30-60 секунд, не переживай!")
 
         self.rollback_manager.create_backup(reason="pre_skill_build", is_automatic=True)
 
@@ -186,6 +188,7 @@ class SkillBuilder:
         for iteration in range(1, self.MAX_RETRIES + 1):
             result["iterations"] = iteration
             logger.info(f"🔄 Попытка {iteration}/{self.MAX_RETRIES}")
+            print(f"   📝 Генерация кода (попытка {iteration}/{self.MAX_RETRIES})...")
 
             try:
                 code_result = await self._generate_skill_code(user_request, iteration, result["errors"])
@@ -203,12 +206,14 @@ class SkillBuilder:
                     self._cleanup_skill(skill_path)
                     continue
 
+                print(f"   🧪 Тестирую скилл...")
                 test_ok, test_error = await self._test_skill(skill_path, skill_name)
                 if not test_ok:
                     result["errors"].append(f"Тест: {test_error}")
                     self._cleanup_skill(skill_path)
                     continue
 
+                print(f"   📦 Загружаю скилл...")
                 load_ok = await self._load_skill(skill_path)
                 if not load_ok:
                     result["errors"].append("Ошибка загрузки")
@@ -224,6 +229,7 @@ class SkillBuilder:
                 result["success"] = True
                 logger.info(f"✅ Скилл {skill_name} создан и загружен!")
                 self._update_stability(skill_path, "stable")
+                print(f"   ✅ Скилл {skill_name} готов!")
                 break
 
             except Exception as e:

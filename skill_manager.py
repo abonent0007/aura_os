@@ -200,7 +200,7 @@ class SkillManager:
         if REGISTRY_FILE.exists():
             with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        return {"version": "1.0.1", "skills": {}, "creation_history": []}
+        return {"version": "1.0.3", "skills": {}, "creation_history": []}
     
     def _save_registry(self):
         """Сохранение реестра"""
@@ -347,12 +347,11 @@ class SkillManager:
         return triggers
     
     def _record_error(self, skill_name: str):
-        """Запись ошибки скилла"""
+        """Запись ошибки скилла."""
         if skill_name in self.skills:
             self.skills[skill_name].errors += 1
-        
-        if skill_name in self.registry["skills"]:
-            self.registry["skills"][skill_name]["errors"] += 1
+        if skill_name in self.registry.get("skills", {}):
+            self.registry["skills"][skill_name]["errors"] = self.registry["skills"][skill_name].get("errors", 0) + 1
             self._save_registry()
     
     def get_stats(self) -> dict:
