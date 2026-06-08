@@ -1,9 +1,12 @@
 # moex_stock_tracker/skill.py — v3.0 (доработан по рекомендациям Ауры)
 # MOEX ISS API: свечи + цена + объём + MACD(12/26/9) с Signal и Histogram
 
-import json, re
+import json, re, sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from autogen.beta import tools
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+from utils import run_async
 
 try:
     import httpx
@@ -22,41 +25,77 @@ MOEX_MARKETDATA_URL = (
 
 POPULAR = {
     "сбер": "SBER", "сбербанк": "SBER",
-    "газпром": "GAZP", "лукойл": "LKOH",
-    "яндекс": "YNDX", "норникель": "GMKN",
-    "роснефть": "ROSN", "втб": "VTBR",
-    "магнит": "MGNT", "аэрофлот": "AFLT",
-    "мтс": "MTSS", "новатэк": "NVTK",
-    "татнефть": "TATN", "сургутнефтегаз": "SNGS",
-    "полюс": "PLZL", "северсталь": "CHMF",
-    "алроса": "ALRS", "интеррао": "IRAO",
+    "газпром": "GAZP", "газпрома": "GAZP",
+    "лукойл": "LKOH", "лукойла": "LKOH",
+    "яндекс": "YNDX", "яндекса": "YNDX",
+    "норникель": "GMKN", "норильский никель": "GMKN",
+    "роснефть": "ROSN", "роснефти": "ROSN",
+    "втб": "VTBR",
+    "магнит": "MGNT", "магнита": "MGNT",
+    "аэрофлот": "AFLT", "аэрофлота": "AFLT",
+    "мтс": "MTSS",
+    "новатэк": "NVTK", "новатэка": "NVTK",
+    "татнефть": "TATN", "татнефти": "TATN",
+    "сургутнефтегаз": "SNGS", "сургутнефтегаза": "SNGS",
+    "полюс": "PLZL", "полюса": "PLZL",
+    "северсталь": "CHMF", "северстали": "CHMF",
+    "алроса": "ALRS", "алросы": "ALRS",
+    "интеррао": "IRAO", "интер рао": "IRAO",
     "московская биржа": "MOEX", "мкб": "CBOM",
+    "озон": "OZON", "озона": "OZON",
+    "система": "AFKS", "афк система": "AFKS",
+    "транснефть": "TRNFP",
+    "русал": "RUAL", "русала": "RUAL",
+    "пик": "PIKK",
+    "икс5": "X5", "x5 group": "X5", "пятёрочка": "X5",
+    "русгидро": "HYDR",
+    "ростелеком": "RTKM", "ростелекома": "RTKM",
+    "сибур": "SIBN",
+    "башнефть": "BANE",
+    "нлмк": "NLMK", "новолипецкий": "NLMK",
+    "самолёт": "SMLT", "самолета": "SMLT",
+    "ммк": "MAGN", "магнитогорский": "MAGN",
+    "никель": "NKNC", "нижнекамскнефтехим": "NKNC",
+    "лср": "LSRG", "лср групп": "LSRG",
+    "иркут": "IRKT", "иркута": "IRKT",
+    "фосагро": "PHOR",
+    "трансмашхолдинг": "TRMK",
+    "мосэнерго": "MSRS",
+    "рус агро": "RAGR",
+    "совкомфлот": "FLOT",
+    "камаз": "KMAZ", "камаза": "KMAZ",
+    "мосэнергосбыт": "MSNG",
+    "акрон": "AKRN", "акрона": "AKRN",
+    "всмпо": "VSMO", "всмпо ависма": "VSMO",
+    "эталон": "ETLN",
+    "русснефть": "RNFT",
+    "ленэнерго": "LSNG",
+    "вк": "VKCO", "вконтакте": "VKCO",
+    "ренессанс": "RENI",
+    "мвидео": "MVID",
+    "технологии": "T",
+    "банк санкт": "BSPB", "bspb": "BSPB",
+    "позитив": "POSI",
+    "черкизово": "GCHE",
+    "металлоинвест": "MTLR",
+    "нмтп": "NMTP",
+    "биржа спб": "SPBE",
+    "юнипро": "UPRO",
+    "сургут преф": "SNGSP",
+    "эн+": "ENPG",
 }
 
 def _sync_fetch(url: str, params: dict = None) -> dict:
-    """Синхронный HTTP-запрос через httpx (thread-safe)."""
+    """Синхронный HTTP-запрос через utils.run_async."""
     if not HAS_HTTPX:
-        return {"error": "httpx not installed. pip install httpx"}
-    import asyncio, threading
-    result = []
-    def _run():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            async def _get():
-                async with httpx.AsyncClient(timeout=15) as c:
-                    r = await c.get(url, params=params or {})
-                    r.raise_for_status()
-                    return r.json()
-            result.append(loop.run_until_complete(_get()))
-        except Exception as e:
-            result.append({"error": str(e)})
-        finally:
-            loop.close()
-    t = threading.Thread(target=_run)
-    t.start()
-    t.join(timeout=20)
-    return result[0] if result else {"error": "timeout"}
+        return {"error": "httpx not installed"}
+    async def _get():
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(url, params=params or {})
+            r.raise_for_status()
+            return r.json()
+    result = run_async(_get(), timeout=20)
+    return result if result else {"error": "timeout"}
 
 def _resolve_ticker(name: str) -> str:
     n = name.strip().lower()

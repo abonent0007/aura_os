@@ -1,12 +1,12 @@
 {
-  "version": "1.0.1",
-  "updated_at": "2026-05-23T16:56:07.994114",
+  "version": "1.0.3",
+  "updated_at": "2026-06-08T08:41:59.417279",
   "skills": {
     "calendar_skill": {
       "path": "builtin\\calendar_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-05-23T16:56:07.979342",
+      "loaded_at": "2026-06-08T08:41:59.354775",
       "errors": 0,
       "version": "2.0.0"
     },
@@ -14,15 +14,15 @@
       "path": "builtin\\web_search_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-05-23T16:56:07.981960",
+      "loaded_at": "2026-06-08T08:41:59.354775",
       "errors": 0,
-      "version": "1.0.0"
+      "version": "2.0.1"
     },
     "content-sanitizer": {
       "path": "custom\\content-sanitizer",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-05-23T16:56:07.984006",
+      "loaded_at": "2026-06-08T08:41:59.370408",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -30,7 +30,7 @@
       "path": "custom\\persona-extractor",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-05-23T16:56:07.990022",
+      "loaded_at": "2026-06-08T08:41:59.386039",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -38,7 +38,7 @@
       "path": "custom\\session-analyzer",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-05-23T16:56:07.991937",
+      "loaded_at": "2026-06-08T08:41:59.417279",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -46,7 +46,7 @@
       "path": "custom\\url-content-fetcher",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-05-23T16:56:07.994083",
+      "loaded_at": "2026-06-08T08:41:59.417279",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -54,7 +54,7 @@
       "path": "custom\\moex_stock_tracker",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-05-23T16:56:07.988041",
+      "loaded_at": "2026-06-08T08:41:59.386039",
       "errors": 0,
       "version": "3.0.0"
     },
@@ -70,9 +70,73 @@
       "path": "custom\\kazan_direction_trains",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-05-23T16:56:07.985974",
+      "loaded_at": "2026-06-08T08:41:59.386039",
       "errors": 0,
       "version": "1.1.0"
+    },
+    "codebase-mapper": {
+      "path": "custom\\codebase-mapper",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-08T08:41:59.370408",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "rss-news-aggregator": {
+      "path": "custom\\rss-news-aggregator",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-08T08:41:59.417279",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "weather_skill": {
+      "path": "builtin\\weather_skill",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-08T08:41:59.354775",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "initiative-agent": {
+      "path": "custom\\initiative-agent",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-08T08:41:59.386039",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-heart": {
+      "path": "custom\\auras-heart",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-08T08:41:59.354775",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "daily-bridge": {
+      "path": "custom\\daily-bridge",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-08T08:41:59.370408",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-whisper": {
+      "path": "custom\\auras-whisper",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-08T08:41:59.370408",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-care": {
+      "path": "custom\\auras-care",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-08T08:41:59.354775",
+      "errors": 0,
+      "version": "1.0.0"
     }
   },
   "creation_history": [

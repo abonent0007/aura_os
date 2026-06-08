@@ -1,9 +1,12 @@
 # kazan_direction_trains/skill.py — Расписание электричек v1.3
 # Формат: 🚃 НОМЕР ОТКУДА → КУДА | 🕐 ВРЕМЯ | 🛤 ПУТЬ | Остановки
 
-import json, re, threading, asyncio, urllib.parse
+import json, re, urllib.parse, sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from autogen.beta import tools
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+from utils import run_async
 
 try:
     import httpx
@@ -42,21 +45,14 @@ def _resolve_code(name: str) -> str:
     return None
 
 def _fetch_url(url, params=None, timeout=15):
-    """Thread-safe HTTP GET returning text."""
+    """HTTP GET возвращает текст (thread-safe)."""
     if not HAS_HTTPX: return ""
-    result = []
-    def _run():
-        loop = asyncio.new_event_loop()
-        async def _get():
-            async with httpx.AsyncClient(timeout=timeout) as c:
-                r = await c.get(url, params=params, headers={"User-Agent": "Mozilla/5.0"})
-                return r.text if r.status_code == 200 else ""
-        try:
-            result.append(loop.run_until_complete(_get()))
-        finally:
-            loop.close()
-    t = threading.Thread(target=_run); t.start(); t.join(timeout + 5)
-    return result[0] if result else ""
+    async def _get():
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            r = await c.get(url, params=params, headers={"User-Agent": "Mozilla/5.0"})
+            return r.text if r.status_code == 200 else ""
+    result = run_async(_get(), timeout + 5)
+    return result if result else ""
 
 # ── Yandex Schedule Parser ──
 def _parse_yandex(html: str, from_st: str, to_st: str, date_str: str):
