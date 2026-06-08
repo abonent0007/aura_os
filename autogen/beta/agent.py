@@ -47,6 +47,7 @@ class Agent:
         self._api_keys = api_keys or [self.config.api_key]
         self._current_key_idx = 0
         self._key_health = {}  # key → {'failures': int, 'last_fail': timestamp}
+        self._trace_callback = None  # (step_type, tool_name, args, result, thought, latency, success)
 
         self._init_client()
 
@@ -105,8 +106,8 @@ class Agent:
         context: str = ""
     ) -> AgentResponse:
         """
-        Основной метод: отправляет запрос модели и возвращает ответ.
-        context — динамический контекст (факты, напоминания), добавляется отдельно от system.
+        ReAct agent: Thought → Action → Observation loop.
+        context — динамический контекст (факты, напоминания).
         """
         messages = self._build_messages(text, stream, context)
 
@@ -114,7 +115,8 @@ class Agent:
         if self.tools:
             openai_tools = [function_to_openai_tool(f) for f in self.tools]
 
-        for _ in range(3):  # максимум 3 цикла tool calling
+        # ReAct: максимум 10 циклов Thought→Action→Observation
+        for cycle in range(10):
             kwargs = {
                 "model": self.config.model,
                 "messages": messages,
@@ -126,26 +128,37 @@ class Agent:
                 kwargs["tool_choice"] = "auto"
 
             try:
+                t0 = __import__('time').time()
                 response = await self.client.chat.completions.create(**kwargs)
+                latency = int((__import__('time').time() - t0) * 1000)
+                if self._trace_callback:
+                    self._trace_callback("inference", None, None, None,
+                                        response.choices[0].message.content, latency, True)
             except openai.APIStatusError as e:
+                if self._trace_callback:
+                    self._trace_callback("error", None, None, str(e), None, 0, False)
                 if self._is_auth_error(e.status_code):
                     print(f"[key-rotation] Key error {e.status_code}, rotating...")
                     self._mark_key_failure()
                     if self._rotate_key():
                         continue
-                # Не auth-ошибка — возвращаем как есть
                 return AgentResponse(content=f"API error {e.status_code}: {e.message}")
             except Exception as e:
+                if self._trace_callback:
+                    self._trace_callback("error", None, None, str(e), None, 0, False)
                 return AgentResponse(content=f"Connection error: {e}")
 
             choice = response.choices[0]
             msg = choice.message
 
-            # Если модель хочет вызвать инструмент
+            # Thought: LLM reasoning (content before tool call)
+            thought = msg.content or ""
+
+            # Action: инструменты
             if msg.tool_calls and self.tools:
                 assistant_msg = {
                     "role": "assistant",
-                    "content": msg.content or "",
+                    "content": thought,
                     "tool_calls": [
                         {
                             "id": tc.id,
@@ -155,34 +168,77 @@ class Agent:
                         for tc in msg.tool_calls
                     ]
                 }
-                # DeepSeek thinking mode: preserve reasoning_content
                 if hasattr(msg, 'reasoning_content') and msg.reasoning_content:
                     assistant_msg["reasoning_content"] = msg.reasoning_content
                 messages.append(assistant_msg)
 
-                for tc in msg.tool_calls:
-                    tool_name = tc.function.name
-                    tool_fn = self._tool_map.get(tool_name)
-                    if tool_fn:
-                        try:
-                            args = json.loads(tc.function.arguments)
-                            result = tool_fn(**args) if args else tool_fn()
-                            tool_result = str(result)
-                        except Exception as e:
-                            tool_result = f"Tool error ({tool_name}): {e}"
+                # Execute tools and collect Observations
+                observations = []
+                # Parallel tool execution (DeepSeek supports concurrent calls)
+                if len(msg.tool_calls) > 1:
+                    import asyncio as _asyncio
+
+                    async def _exec_one(tc):
+                        tool_name = tc.function.name
+                        tool_fn = self._tool_map.get(tool_name)
+                        if tool_fn:
+                            try:
+                                args = json.loads(tc.function.arguments)
+                                loop = _asyncio.get_event_loop()
+                                result = await loop.run_in_executor(None, lambda: tool_fn(**args) if args else tool_fn())
+                                return tc.id, str(result), True
+                            except Exception as e:
+                                return tc.id, f"Error: {e}", False
+                        return tc.id, f"Tool '{tool_name}' not available", False
+
+                    results = await _asyncio.gather(*[_exec_one(tc) for tc in msg.tool_calls])
+                    for tid, result, success in results:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tid,
+                            "content": result[:8000]
+                        })
+                        if self._trace_callback:
+                            self._trace_callback("tool_call", tid[:8], None, result, None, 0, success)
+                else:
+                    # Sequential for single tool
+                    for tc in msg.tool_calls:
+                        tool_name = tc.function.name
+                        tool_fn = self._tool_map.get(tool_name)
+                        if tool_fn:
+                            try:
+                                args = json.loads(tc.function.arguments)
+                                t0 = __import__('time').time()
+                                result = tool_fn(**args) if args else tool_fn()
+                                latency = int((__import__('time').time() - t0) * 1000)
+                                tool_result = str(result)
+                                if self._trace_callback:
+                                    self._trace_callback("tool_call", tool_name,
+                                                        tc.function.arguments, tool_result, None, latency, True)
+                            except Exception as e:
+                                tool_result = f"Error ({tool_name}): {e}"
+                                if self._trace_callback:
+                                    self._trace_callback("tool_call", tool_name,
+                                                        tc.function.arguments, tool_result, None, 0, False)
+                        else:
+                            tool_result = f"Tool '{tool_name}' not available. Try another approach."
 
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": tool_result[:2000]
+                            "content": tool_result[:8000]
                         })
-                continue  # продолжаем цикл — модель получит результаты
 
-            # Финальный ответ
-            content = msg.content or ""
-            return AgentResponse(content=content)
+                # Если только один инструмент и он вернул простой ответ — можем завершить
+                if len(msg.tool_calls) == 1 and cycle >= 0:
+                    continue  # даём LLM шанс ответить с результатом
 
-        return AgentResponse(content="Извини, произошёл сбой при обработке запроса. Попробуй переформулировать вопрос.")
+                continue  # ещё цикл
+
+            # Final answer (нет tool calls)
+            return AgentResponse(content=thought)
+
+        return AgentResponse(content="I hit a processing limit. Let me try a simpler approach — could you rephrase?")
 
     def _build_messages(self, text: str, stream: MemoryStream = None, context: str = "") -> list:
         """
@@ -204,7 +260,7 @@ class Agent:
 
         # 3. История диалога
         if stream and stream.history._messages:
-            for m in stream.history._messages[-20:]:
+            for m in stream.history._messages[-50:]:
                 messages.append(m)
 
         # 4. Сообщение пользователя
