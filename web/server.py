@@ -46,7 +46,7 @@ TAILSCALE_HOSTNAME = WEB_CONFIG.get("tailscale", {}).get("hostname", "aura-os")
 # Инициализация FastAPI
 app = FastAPI(
     title="AURA OS Dashboard",
-    version="1.0.1",
+    version="1.0.3",
     description="Веб-интерфейс управления персональным ассистентом"
 )
 
@@ -167,18 +167,16 @@ async def broadcast(event: str, data: dict):
 async def index(request: Request):
     """Главная страница дашборда"""
     tailscale_ip = get_tailscale_ip()
-    tailscale_status = get_tailscale_status() if TAILSCALE_ENABLED else None
-    
+
     return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
+        request=request,
+        name="index.html",
+        context={
             "app_name": "AURA OS",
-            "version": "1.0.0",
+            "version": "1.0.3",
             "port": PORT,
             "tailscale_ip": tailscale_ip,
             "tailscale_hostname": TAILSCALE_HOSTNAME,
-            "tailscale_status": tailscale_status,
             "local_url": f"http://localhost:{PORT}",
             "tailscale_url": f"http://{TAILSCALE_HOSTNAME}:{PORT}" if tailscale_ip else None,
         }
@@ -411,14 +409,14 @@ async def delete_skill(skill_name: str):
     """Удалить скилл"""
     if not state.skill_manager:
         raise HTTPException(400, "Менеджер скиллов не инициализирован")
-    
+
+    # Запрет удаления встроенных скиллов (проверка ДО выгрузки)
+    builtin_dirs = [d.name for d in (Path(__file__).parent.parent / "skills" / "builtin").iterdir() if d.is_dir()]
+    if skill_name in builtin_dirs:
+        raise HTTPException(403, "Нельзя удалить встроенный скилл")
+
     # Выгружаем
     state.skill_manager.unload_skill(skill_name)
-    
-    # Запрет удаления встроенных скиллов
-    import re
-    if skill_name in [d.name for d in (Path(__file__).parent.parent / "skills" / "builtin").iterdir() if d.is_dir()]:
-        raise HTTPException(403, "Нельзя удалить встроенный скилл")
     
     # Удаляем папку
     skill_path = Path(__file__).parent.parent / "skills" / "custom" / skill_name
@@ -641,7 +639,7 @@ async def chat_tts(request: TTSRequest):
             from pydub import AudioSegment
             import io
             seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
-            audio_duration = len(seg) / 1000.0  # миллисекунды → секунды
+            audio_duration = len(seg) / 1000.0
         except Exception:
             pass
 

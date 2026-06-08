@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AURA OS Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=9">
+    <link rel="stylesheet" href="/static/css/style.css?v=12">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 </head>
 <body>
@@ -12,7 +12,7 @@
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo">🤖 AURA OS</div>
-            <div class="version">v1.0.1</div>
+            <div class="version">v1.0.3</div>
         </div>
         
         <nav class="sidebar-nav">
@@ -153,8 +153,11 @@
                 <div class="chat-messages" id="chatMessages">
                     <div class="chat-message assistant">
                         <div class="message-avatar">👩</div>
-                        <div class="message-content">
-                            Привет! Я Аура. Чем могу помочь?
+                        <div class="message-body">
+                            <div class="message-content">
+                                Привет! Я Аура. Чем могу помочь?
+                            </div>
+                            <div class="message-time">--:--</div>
                         </div>
                     </div>
                 </div>
@@ -162,9 +165,9 @@
                 <div class="chat-input-area">
                     <textarea 
                         id="chatInput" 
-                        placeholder="Напиши сообщение..."
-                        rows="2"
-                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}"
+                        placeholder="Введите сообщение... (Shift+Enter — новая строка, Enter — отправить)"
+                        rows="3"
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();} if(event.key==='Tab'){event.preventDefault();var s=this.selectionStart;this.value=this.value.substring(0,s)+'    '+this.value.substring(this.selectionEnd);this.selectionStart=this.selectionEnd=s+4;}"
                     ></textarea>
                     <button class="btn btn-primary" id="btn-mic" onclick="toggleVoiceInput()" title="Голосовой ввод">🎤</button>
                     <button class="btn btn-primary" onclick="sendChatMessage()">Отправить</button>
@@ -298,7 +301,7 @@
     
     <script src="/static/js/app.js?v=3"></script>
     <script src="/static/js/dashboard.js?v=5"></script>
-    <script src="/static/js/chat.js?v=9"></script>
+    <script src="/static/js/chat.js?v=12"></script>
     <script src="/static/js/logs.js?v=3"></script>
     <script src="/static/js/skills.js?v=6"></script>
     <script src="/static/js/backups.js?v=3"></script>

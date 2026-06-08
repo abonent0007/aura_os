@@ -138,13 +138,15 @@ function appendChatMessage(role, text) {
     const div = document.createElement('div');
     div.className = `chat-message ${role}`;
 
-    const rendered = role === 'assistant' ? renderMarkdown(text) : escapeHtml(text);
+    const rendered = role === 'assistant' ? renderMarkdown(text) : escapeHtml(text).replace(/\n/g, '<br>');
 
     const msgId = 'msg-' + Date.now();
+    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     div.innerHTML = `
         <div class="message-avatar">${role === 'user' ? '?' : '👩'}</div>
         <div class="message-body">
             <div class="message-content">${rendered}</div>
+            <div class="message-time">${time}</div>
             ${role === 'assistant' ? `
             <div class="audio-player">
                 <button class="btn btn-sm" onclick="playAudio(this, document.getElementById('${msgId}').dataset.text)">Прослушать</button>
