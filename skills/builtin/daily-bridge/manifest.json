@@ -1,0 +1,14 @@
+{
+  "name": "daily-bridge",
+  "version": "1.0.0",
+  "author": "AURA OS",
+  "description": "Ежедневный ритуал: задаёт небанальный вопрос и сохраняет ответ в память, строя мост между Аурой и пользователем",
+  "category": "personality",
+  "dependencies": [],
+  "triggers": ["мостик", "вопрос дня", "ритуал", "daily question"],
+  "permissions": ["memory"],
+  "auto_created": true,
+  "stability": "testing",
+  "python_version": "3.12",
+  "created_at": "2025-02-01T00:00:00"
+}

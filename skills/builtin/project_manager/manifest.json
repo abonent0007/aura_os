@@ -1,0 +1,14 @@
+{
+  "name": "project_manager",
+  "version": "1.0.0",
+  "author": "Аура + Юра",
+  "description": "Управление инженерными проектами: создание, чтение, запись, удаление, запуск проектов в skills/project/",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": ["создай проект", "новый проект", "проект", "project", "покажи проекты", "дерево проекта", "запусти проект"],
+  "permissions": ["file_system", "subprocess"],
+  "auto_created": true,
+  "stability": "stable",
+  "created_at": "2026-06-07"
+}
