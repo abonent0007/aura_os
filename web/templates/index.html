@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AURA OS Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=12">
+    <link rel="stylesheet" href="/static/css/style.css?v=19">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 </head>
 <body>
@@ -144,6 +147,7 @@
             <header class="page-header">
                 <h1>Общение с Аурой</h1>
                 <div class="header-actions">
+                    <button class="btn btn-sm" id="btn-pause" onclick="toggleChatPause()" title="Пауза прокрутки">⏸️</button>
                     <button class="btn btn-sm" id="btn-mode-aura" onclick="setChatMode('aura')" style="background:var(--accent);color:white">Твоя Аура</button>
                     <button class="btn btn-sm" id="btn-mode-expert" onclick="setChatMode('expert')">Эксперт</button>
                 </div>
@@ -154,7 +158,7 @@
                     <div class="chat-message assistant">
                         <div class="message-avatar">👩</div>
                         <div class="message-body">
-                            <div class="message-content">
+                            <div class="message-content" id="welcomeMsg">
                                 Привет! Я Аура. Чем могу помочь?
                             </div>
                             <div class="message-time">--:--</div>
@@ -301,7 +305,7 @@
     
     <script src="/static/js/app.js?v=3"></script>
     <script src="/static/js/dashboard.js?v=5"></script>
-    <script src="/static/js/chat.js?v=12"></script>
+    <script src="/static/js/chat.js?v=21"></script>
     <script src="/static/js/logs.js?v=3"></script>
     <script src="/static/js/skills.js?v=6"></script>
     <script src="/static/js/backups.js?v=3"></script>

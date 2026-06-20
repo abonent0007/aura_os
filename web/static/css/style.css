@@ -98,12 +98,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .code-header{display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:#16162a;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)}
 .code-block pre{margin:0;padding:12px;overflow-x:auto;font-family:'JetBrains Mono',Consolas,monospace;font-size:13px;line-height:1.5;color:#e4e6eb;white-space:pre;tab-size:4}
 .inline-code{background:var(--bg-hover);padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.9em}
+.md-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}
+.md-table th,.md-table td{border:1px solid var(--border);padding:6px 10px;text-align:left}
+.md-table th{background:var(--bg-secondary);font-weight:600;color:var(--text-primary)}
+.md-table td{color:var(--text-secondary)}
+.md-table tr:hover td{background:var(--bg-hover)}
 .message-body{display:flex;flex-direction:column;gap:8px;max-width:100%}
 .message-content p{margin:4px 0}
 .message-content ul,.message-content ol{margin:4px 0;padding-left:20px}
 .message-content h2,.message-content h3,.message-content h4{margin:8px 0 4px}
 .message-content a{color:var(--accent);text-decoration:underline}
-.message-time{font-size:11px;color:var(--text-muted);margin-top:2px;text-align:right}
+.message-content hr{border:none;border-top:1px solid var(--border);margin:12px 0}
+.message-time{font-size:11px;color:var(--text-muted)}
+.chat-message.user .message-time{text-align:left}
+.message-footer{display:flex;align-items:center;gap:8px;margin-top:4px}
+.message-footer .btn{font-size:16px;padding:2px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;cursor:pointer;line-height:1}
+.message-footer .btn:hover{background:var(--bg-hover);color:var(--text-primary)}
 .chat-message.user .message-time{text-align:left}
 .typing-indicator{display:flex;gap:4px;align-items:center;padding:12px 16px}
 .typing-dot{width:8px;height:8px;border-radius:50%;background:var(--text-muted);animation:typing-bounce 1.4s infinite ease-in-out}
@@ -111,6 +121,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 @keyframes typing-bounce{0%,80%,100%{transform:scale(0.6);opacity:0.4}40%{transform:scale(1);opacity:1}}
 .audio-player{margin-top:8px;padding:8px;background:var(--bg-secondary);border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px}
 .audio-player .btn{font-size:13px;background:var(--accent);border-color:var(--accent);color:white}
+.message-actions{display:none}
 .settings-group textarea:focus,.settings-group input:focus,.settings-group select:focus{outline:1px solid var(--accent);border-color:var(--accent)}
 
 /* Calendar */

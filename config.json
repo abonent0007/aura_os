@@ -7,17 +7,16 @@
     "provider": "deepseek",
     "_providers": {
       "deepseek": "DEEPSEEK_API_KEY",
-      "_openai": "OPENAI_API_KEY (закомментирован)",
-      "_openrouter": "OPENROUTER_API_KEY (закомментирован)",
-      "_local": "OLLAMA_API_KEY (опционально)"
+      "lmstudio": "LMSTUDIO_API_KEY (эксперимент)",
+      "local": "OLLAMA_API_KEY (Ollama — эмбеддинги)"
     },
     "model": "deepseek-v4-pro",
     "temperature": 0.7,
-    "max_tokens": 12000,
+    "max_tokens": 30000,
     "base_url": "https://api.deepseek.com/v1"
   },
   "compactor": {
-    "_comment": "Сжатие диалогов — DeepSeek v4 Flash (дешевле)",
+    "_comment": "Сжатие диалогов — DeepSeek v4 Flash",
     "provider": "deepseek",
     "model": "deepseek-v4-flash",
     "temperature": 0.3,
@@ -37,14 +36,15 @@
       "language": "ru"
     },
     "output": {
-      "engine": "edge_tts",
+      "engine": "silero",
       "_engines": {
-        "edge_tts": "Microsoft (ru-RU-SvetlanaNeural)",
-        "pyttsx3": "Офлайн",
-        "openai_tts": "OpenAI (требует ключ)"
+        "silero": "Silero TTS v5 (baya, локальный, 100x realtime)",
+        "piper": "Piper TTS (irina, локальный)",
+        "edge_tts": "Microsoft (ru-RU-SvetlanaNeural, интернет)",
+        "pyttsx3": "Windows TTS (Irina, офлайн)"
       },
-      "voice_name": "ru-RU-SvetlanaNeural",
-      "rate": 160,
+      "voice_name": "baya",
+      "rate": 168,
       "language": "ru"
     },
     "wake_word": {
@@ -117,12 +117,36 @@
     "reminder_check_interval_seconds": 60,
     "default_reminder_advance_minutes": 10,
     "categories": {
-      "drr": {"name": "День рождения", "emoji": "🎂", "recurring": "yearly"},
-      "zad": {"name": "Задача", "emoji": "📋", "recurring": null},
-      "nap": {"name": "Напоминание", "emoji": "🔔", "recurring": null},
-      "evt": {"name": "Событие", "emoji": "📅", "recurring": null},
-      "pln": {"name": "План", "emoji": "📌", "recurring": null},
-      "med": {"name": "Здоровье", "emoji": "🏥", "recurring": null}
+      "drr": {
+        "name": "День рождения",
+        "emoji": "🎂",
+        "recurring": "yearly"
+      },
+      "zad": {
+        "name": "Задача",
+        "emoji": "📋",
+        "recurring": null
+      },
+      "nap": {
+        "name": "Напоминание",
+        "emoji": "🔔",
+        "recurring": null
+      },
+      "evt": {
+        "name": "Событие",
+        "emoji": "📅",
+        "recurring": null
+      },
+      "pln": {
+        "name": "План",
+        "emoji": "📌",
+        "recurring": null
+      },
+      "med": {
+        "name": "Здоровье",
+        "emoji": "🏥",
+        "recurring": null
+      }
     }
   },
   "web_search": {

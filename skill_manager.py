@@ -26,6 +26,7 @@ from loguru import logger
 SKILLS_DIR = Path(__file__).parent / "skills"
 BUILTIN_DIR = SKILLS_DIR / "builtin"
 CUSTOM_DIR = SKILLS_DIR / "custom"
+PROJECT_DIR = SKILLS_DIR / "project"
 REGISTRY_FILE = SKILLS_DIR / "registry.json"
 
 
@@ -212,7 +213,7 @@ class SkillManager:
         """Поиск всех скиллов в папках"""
         skill_dirs = []
         
-        for base_dir in [BUILTIN_DIR, CUSTOM_DIR]:
+        for base_dir in [BUILTIN_DIR, CUSTOM_DIR, PROJECT_DIR]:
             if base_dir.exists():
                 for item in base_dir.iterdir():
                     if item.is_dir() and (item / "manifest.json").exists():

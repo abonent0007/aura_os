@@ -610,20 +610,10 @@ class TTSRequest(BaseModel):
 
 @app.post("/api/chat/tts")
 async def chat_tts(request: TTSRequest):
-    """Генерирует TTS аудио (MP3). Очищает текст от эмодзи и маркдауна."""
+    """Генерирует TTS аудио (MP3)."""
     try:
-        import re
         text = request.text
-        # Очистка для голоса
-        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-        text = re.sub(r'\*(.+?)\*', r'\1', text)
-        text = re.sub(r'`(.+?)`', r'\1', text)
-        text = re.sub(r'```[\s\S]*?```', '', text)
-        text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-        # Оставляем только буквы, цифры, пробелы, пунктуацию и переносы строк
-        text = re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9\s\.\,\!\?\;\:\-\(\)\n]', '', text, flags=re.UNICODE)
-        text = re.sub(r'\s+', ' ', text).strip()
-        if not text:
+        if not text or not text.strip():
             text = "Нет текста для озвучивания."
 
         from aura_voice import TextToSpeech

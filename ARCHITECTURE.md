@@ -5,7 +5,7 @@
 ```
                     ┌─────────────────────────────┐
                     │      ПОЛЬЗОВАТЕЛЬ           │
-                    │  Telegram | Web | Console   │
+                    │  Telegram | Web | Console    │
                     └─────────────┬───────────────┘
                                   │
                     ┌─────────────┴───────────────┐
@@ -17,14 +17,14 @@
               ▼                                       ▼
     ┌─────────────────┐                   ┌─────────────────────┐
     │   ТВОЯ АУРА     │                   │      ЭКСПЕРТ        │
-    │  26 + 61 tools  │                   │  мультиагентный     │
-    │  ReAct ×10      │                   │  оркестратор        │
+    │  27 + 89 tools  │                   │  мультиагентный     │
+    │  ReAct ×30      │                   │  оркестратор        │
     └────────┬────────┘                   └──────────┬──────────┘
              │                                       │
              ▼                                       ▼
     ┌────────────────┐                   ┌──────────────────────┐
     │   AuraAgent    │                   │   Orchestrator       │
-    │  ReAct loop    │                   │   5 контейнеров      │
+    │  ReAct ×30     │                   │   5 контейнеров      │
     │  LoopGuard     │                   │   DeepSeek           │
     │  TraceCollector│                   │   Дедупликатор       │
     │                │                   └──────────────────────┘
@@ -34,7 +34,8 @@
     │ │ Календарь  │ │
     │ │ Погода     │ │
     │ │ Поиск/Нов. │ │
-    │ │ Скиллы (15)│ │
+    │ │ Браузер    │ │
+    │ │ Скиллы (20)│ │
     │ │ Диагност.  │ │
     │ │ Саморазв.  │ │
     │ └────────────┘ │
@@ -45,6 +46,9 @@
                                                 ▼
                                        ┌───────────────┐
                                        │    ОТВЕТ      │
+                                       │ (markdown,    │
+                                       │  таблицы, hr, │
+                                       │  код, TTS)    │
                                        └───────────────┘
 ```
 
@@ -63,7 +67,7 @@ Web:
 
 ## Инструменты Ауры (режим «Твоя Аура»)
 
-### Встроенные (26 core tools)
+### Встроенные (27 core tools)
 
 | Группа | Инструменты |
 |---|---|
@@ -71,10 +75,11 @@ Web:
 | Календарь | get_today_events, get_upcoming_events, add_event, add_birthday_reminder, search_calendar, complete_task_by_name, reschedule_task, get_birthdays_list, check_due_reminders |
 | Погода | get_weather, get_weather_forecast, get_weather_by_coords |
 | Интернет | search_web, search_news |
+| Браузер | open_url (открыть ссылку в системном браузере) |
 | Диагностика | self_diagnose, trace_stats, trace_search, learn_from_traces |
-| Файлы скиллов | read_skill_file, edit_skill_file, list_skill_files |
+| Файлы skills/ | read_skill_file, edit_skill_file, delete_skill_file, list_skill_files |
 
-### Скиллы (15 skills, 61 skill tools)
+### Скиллы (20 skills, 89 skill tools)
 
 | Скилл | Инстр. | Тип | Описание |
 |---|---|---|---|
@@ -89,11 +94,15 @@ Web:
 | kazan_direction_trains | 3 | builtin | Расписание электричек |
 | codebase-mapper | 4 | builtin | Карта кодовой базы |
 | rss-news-aggregator | 3 | builtin | RSS-новости (lenta.ru + Google News) |
-| daily-bridge | 3 | АУРА | 15 глубоких вопросов, ответы навсегда |
+| api-finder | 12 | АУРА | Поиск API (1554) + ключи + синхронизация |
+| daily-bridge | 3 | АУРА | 15 глубоких вопросов |
 | auras-heart | 8 | АУРА | Сердце: ритуал + портрет + дневник |
-| auras-whisper | 5 | АУРА | Шёпот: 5 тонов, когда тишина громкая |
-| auras-care | 6 | АУРА | Забота: еда, вода, отдых, любимые места |
+| auras-whisper | 5 | АУРА | Шёпот: 5 тонов |
+| auras-care | 6 | АУРА | Забота: еда, вода, отдых |
 | initiative-agent | 5 | АУРА | Инициатива: сводка, флирт, идеи |
+| radio | 7 | АУРА | Интернет-радио: жанры, настроения |
+| sms_sender | 4 | АУРА | Отправка SMS (ключ в .env) |
+| radio_browser | 5 | АУРА | Поиск радиостанций |
 
 ## Саморазвитие
 
@@ -110,31 +119,47 @@ Web:
              ▼                        ▼
     ┌──────────────────────────────────────────┐
     │  Аура читает skills/README.md + SKILL.md │
-    │  (анти-паттерны, ядро, шаблоны)          │
+    │  (анти-паттерны, ядро, ключи, шаблоны)   │
     └────────────────────┬─────────────────────┘
                          │
                          ▼
     ┌────────────────────────────────────────────┐
     │  Создаётся: manifest + skill.py + SKILL.md │
+    │  Авто-перезагрузка инструментов в агента   │
     │  Валидация → тест → загрузка               │
     └────────────────────────────────────────────┘
 
 Аура может:
-- Создавать новые скиллы с нуля
-- Редактировать существующие в skills/custom/
-- Использовать AuraDatabase для памяти
-- Импортировать CONFIG, WeatherService, DuckDuckGoSearch
-- Хранить данные в локальном JSON (не выдуманные модули)
+- Создавать/редактировать/удалять скиллы во всей папке skills/
+- Использовать api-finder для поиска API (1554 шт.)
+- Сохранять ключи в skills/custom/.env и синхронизировать
+- Импортировать CONFIG, AuraDatabase, WeatherService, DuckDuckGoSearch
+- Читать/писать data.json скиллов, README.md, .env
+```
+
+## Хранение ключей
+
+```
+skills/custom/.env  ←──→  data.json скиллов
+       ↑                      ↑
+       └── sync_env_from_skills ──┘
+       └── push_env_to_skills ────┘
+       └── inject_key_to_skill ───┘
+
+Формат: NAME_api_key=VALUE  # описание
+Управление: save_api_key, list_api_keys, delete_api_key
 ```
 
 ## Ограничения и лимиты
 
 | Параметр | Значение | Где |
 |---|---|---|
-| ReAct циклы | 10 | agent.py |
+| ReAct циклы | 30 | agent.py |
 | Обрезка результатов | 8000 символов | agent.py |
-| Окно истории | 50 сообщений | agent.py |
-| max_tokens (агент) | 12000 | config.json |
-| Таймаут агента | 40 секунд | aura_core.py |
-| Таймаут TTS (Edge) | connect 40с, receive 240с | aura_voice.py |
+| Окно истории | 150 сообщений | agent.py |
+| max_tokens (агент) | 36000 | config.json |
+| max_tokens (SkillBuilder) | 16000 | skill_builder.py |
+| Таймаут агента | 120 секунд | aura_core.py |
+| Таймаут TTS (Piper) | безлимитный (локальный) | aura_voice.py |
+| Таймаут TTS (Edge) | connect 40с, receive 480с | aura_voice.py |
 | Таймаут Telegram API | read/write/connect 20с | main.py |

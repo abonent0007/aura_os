@@ -51,10 +51,12 @@ except ImportError:
     ParseMode = None
 
 from aura_core import AuraAgent, AuraDatabase, CONFIG, check_config
+import aura_core
 from aura_voice import VoiceMessageHandler, ResponseMode, InputMode, ResponseFormatDetector
 from web_search import WebSearchConfig, SearchTriggerDetector
 from skill_manager import SkillManager
 from skill_builder import SkillBuilder
+from hooks.hooks import run_session_start
 from rollback_manager import RollbackManager
 from system_monitor import SystemMonitor, MonitorConfig
 
@@ -123,6 +125,10 @@ class AuraTelegramBot:
         self.rollback_manager = rollback_manager
         self.monitor = system_monitor
         self.skill_builder = skill_builder
+
+        # Регистрируем ссылки для авто-перезагрузки скиллов после edit_skill_file
+        aura_core._skill_manager_ref = skill_manager
+        aura_core._agent_ref = self.aura.agent
         
         voice_cfg = CONFIG.get("voice", {})
         self.voice_handler = VoiceMessageHandler(
@@ -178,6 +184,9 @@ class AuraTelegramBot:
         if skill_tools:
             self.aura.agent.add_tools(skill_tools)
             print(f"[skills] Integrated {len(skill_tools)} skill tools")
+        hook_results = run_session_start()
+        for r in hook_results:
+            print(f"[hooks] {r}")
     
     async def setup(self):
         commands = [
@@ -631,4 +640,20 @@ async def main():
             await bot.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import warnings
+    warnings.filterwarnings("ignore", message=".*coroutine.*was never awaited.*")
+
+    # Подавляем «Event loop is closed» от httpx/httpcore при завершении (Windows)
+    def _ignore_loop_closed(loop, ctx):
+        exc = ctx.get("exception")
+        if isinstance(exc, RuntimeError) and "Event loop is closed" in str(exc):
+            return
+        loop.default_exception_handler(ctx)
+
+    loop = asyncio.new_event_loop()
+    loop.set_exception_handler(_ignore_loop_closed)
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(main())
+    finally:
+        loop.close()

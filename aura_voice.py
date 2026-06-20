@@ -304,6 +304,37 @@ class TextToSpeech:
         text = re.sub(r'<[^>]+>', '', text)
         # Collapse multiple newlines
         text = re.sub(r'\n{3,}', '\n\n', text)
+
+        # Удаляем блоки кода
+        text = re.sub(r'```[\s\S]*?```', '', text)
+
+        # Удаляем строки без русских букв (код, команды, English-only)
+        lines = text.split('\n')
+        russian_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # Пропускаем строки где нет русских букв и они не являются разделителями
+            if re.search(r'[а-яёА-ЯЁ]', stripped):
+                russian_lines.append(stripped)
+            elif stripped and not re.search(r'[a-zA-Z]', stripped):
+                # Строки без латиницы (только знаки препинания/цифры/эмодзи)
+                if re.search(r'[.!?]', stripped):
+                    russian_lines.append(stripped)
+        text = '\n'.join(russian_lines)
+
+        # Удаляем URL
+        text = re.sub(r'https?://\S+', '', text)
+
+        # Удаляем оставшиеся строки которые выглядят как код/команды
+        text = re.sub(r'^[a-zA-Z0-9_\-\.\/\\\:\s]+\$?\s*$', '', text, flags=re.MULTILINE)
+
+        # Удаляем одиночные латинские слова (артефакты)
+        text = re.sub(r'\b[a-zA-Z]{2,}\b', '', text)
+
+        # Убираем пустые строки в начале и конце, дубли пробелов
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r' +', ' ', text)
+
         return text.strip()
 
     async def synthesize_to_file(self, text: str, output_path: str = None) -> str:
@@ -311,7 +342,10 @@ class TextToSpeech:
         Синтез речи в аудиофайл.
         Возвращает путь к файлу (временному или указанному).
         """
+        original_len = len(text)
         text = self._clean_for_tts(text)
+        if len(text) < original_len:
+            print(f"[TTS] _clean_for_tts: {original_len} → {len(text)} символов (удалено {original_len - len(text)})")
         if self.engine == "openai_tts":
             return await self._synthesize_openai(text, output_path)
         elif self.engine == "pyttsx3":
@@ -319,7 +353,11 @@ class TextToSpeech:
         elif self.engine == "edge_tts":
             return await self._synthesize_edge(text, output_path)
         elif self.engine == "kokoro":
-            return await self._synthesize_kokoro(text, output_path)
+            raise NotImplementedError("Kokoro TTS engine not yet implemented. Use 'silero' or 'piper' instead.")
+        elif self.engine == "piper":
+            return await self._synthesize_piper(text, output_path)
+        elif self.engine == "silero":
+            return await self._synthesize_silero(text, output_path)
         else:
             raise ValueError(f"Неизвестный движок синтеза: {self.engine}")
     
@@ -332,10 +370,19 @@ class TextToSpeech:
                 audio_bytes = f.read()
             return audio_bytes
         finally:
-            # УДАЛЯЕМ временный файл после прочтения
+            # Пауза 5 мин перед удалением — даём аудио доиграть
             if temp_path and os.path.exists(temp_path):
-                os.remove(temp_path)
-                print(f"🗑️ Удален временный файл TTS: {temp_path}")
+                def _delayed_cleanup():
+                    import time
+                    time.sleep(300)
+                    try:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                            print(f"🗑️ Удален временный файл TTS: {temp_path}")
+                    except Exception:
+                        pass
+                import threading
+                threading.Thread(target=_delayed_cleanup, daemon=True).start()
     
     async def _synthesize_openai(self, text: str, output_path: str = None) -> str:
         """Синтез через OpenAI TTS API (женские голоса: nova, shimmer, alloy)"""
@@ -363,65 +410,219 @@ class TextToSpeech:
         return output_path
     
     async def _synthesize_pyttsx3(self, text: str, output_path: str = None) -> str:
-        """Синтез через локальный pyttsx3"""
+        """Синтез через локальный pyttsx3 (Microsoft Irina, без лимитов, офлайн)"""
         if not self.tts_engine:
             raise RuntimeError("pyttsx3 не инициализирован")
-        
+
         if output_path is None:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 output_path = f.name
-        
-        # pyttsx3 сохраняет в файл
-        self.tts_engine.save_to_file(text, output_path)
-        self.tts_engine.runAndWait()
-        
+        else:
+            output_path = str(output_path)
+
+        # pyttsx3 сохраняет в WAV → конвертируем в MP3 через pydub
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wf:
+            wav_path = wf.name
+
+        try:
+            self.tts_engine.save_to_file(text, wav_path)
+            self.tts_engine.runAndWait()
+
+            from pydub import AudioSegment
+            audio = AudioSegment.from_file(wav_path, format="wav")
+            audio.export(output_path, format="mp3")
+        finally:
+            if os.path.exists(wav_path):
+                os.remove(wav_path)
+
         return output_path
     
     async def _synthesize_edge(self, text: str, output_path: str = None) -> str:
-        """Синтез через Microsoft Edge TTS (бесплатно, качественно)"""
+        """Синтез через Microsoft Edge TTS (бесплатно, качественно).
+        Разбивает длинный текст на чанки чтобы обойти лимит сервиса."""
         try:
             import edge_tts
-            
+
             voice = self.voice if self.voice else "ru-RU-SvetlanaNeural"
-            
+
             if output_path is None:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                     output_path = f.name
-            
-            communicate = edge_tts.Communicate(text, voice, connect_timeout=40, receive_timeout=240)
-            await communicate.save(output_path)
-            
+
+            # Edge TTS limit: ~3000 chars per request. Split at sentence boundaries.
+            MAX_CHUNK = 2500
+            if len(text) <= MAX_CHUNK:
+                communicate = edge_tts.Communicate(text, voice, connect_timeout=40, receive_timeout=480)
+                await communicate.save(output_path)
+                return output_path
+
+            # Split into sentence chunks
+            import re
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            chunks = []
+            current = ""
+            for s in sentences:
+                if len(current) + len(s) + 1 > MAX_CHUNK and current:
+                    chunks.append(current.strip())
+                    current = s
+                else:
+                    current = (current + " " + s).strip()
+            if current.strip():
+                chunks.append(current.strip())
+
+            # Synthesize each chunk and concatenate
+            import io
+            from pydub import AudioSegment
+
+            combined = AudioSegment.empty()
+            for i, chunk in enumerate(chunks):
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as cf:
+                    chunk_path = cf.name
+                try:
+                    communicate = edge_tts.Communicate(chunk, voice, connect_timeout=40, receive_timeout=480)
+                    await communicate.save(chunk_path)
+                    segment = AudioSegment.from_file(chunk_path, format="mp3")
+                    combined += segment
+                finally:
+                    if os.path.exists(chunk_path):
+                        os.remove(chunk_path)
+
+            combined.export(output_path, format="mp3")
             return output_path
-            
+
         except ImportError:
             raise ImportError("Установи edge_tts: pip install edge-tts")
 
-    async def _synthesize_kokoro(self, text: str, output_path: str = None) -> str:
-        """Синтез через Kokoro (локальный open-source TTS, женские голоса)."""
+    async def _synthesize_piper(self, text: str, output_path: str = None) -> str:
+        """Синтез через Piper TTS (локальный, быстрый, русский голос irina)."""
         try:
-            from kokoro import KPipeline
-            import numpy as np
-            import soundfile as sf
+            from piper import PiperVoice
+            import wave
         except ImportError:
-            raise ImportError("pip install kokoro soundfile")
+            raise ImportError("Установи piper-tts: pip install piper-tts")
 
-        pipeline = KPipeline(lang_code="a")  # American English — best quality
-        voice = self.voice if self.voice else "af_heart"  # Female voice
+        model_path = os.getenv("PIPER_MODEL_PATH", "models/piper/ru_RU-irina-medium.onnx")
+        config_path = model_path.replace(".onnx", ".json")
 
-        samples = []
-        for _, _, audio in pipeline(text, voice=voice, speed=1.0):
-            samples.append(audio)
-
-        if not samples:
-            raise RuntimeError("Kokoro returned no audio")
-
-        audio = np.concatenate(samples)
+        if not hasattr(self, '_piper_voice'):
+            self._piper_voice = PiperVoice.load(model_path, config_path=config_path)
 
         if output_path is None:
-            with __import__('tempfile').NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 output_path = f.name
 
-        sf.write(output_path, audio, 24000)
+        # Piper пишет WAV через wave.Wave_write объект
+        wav_path = output_path.replace(".mp3", ".wav")
+        if wav_path == output_path:
+            wav_path = output_path + ".wav"
+
+        from piper import SynthesisConfig
+        syn_config = SynthesisConfig(
+            length_scale=0.952,  # ~5% faster
+            volume=float(os.getenv("TTS_RATE", "160")) / 160 * 1.0  # scale volume
+        )
+        with wave.open(wav_path, "wb") as wf:
+            self._piper_voice.synthesize_wav(text, wf, syn_config=syn_config)
+
+        # WAV → MP3
+        from pydub import AudioSegment
+        audio = AudioSegment.from_file(wav_path, format="wav")
+        audio.export(output_path, format="mp3")
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+
+        return output_path
+
+    async def _synthesize_silero(self, text: str, output_path: str = None) -> str:
+        """Синтез через Silero TTS v5 (локальный, 100x realtime, baya/kseniya/xenia).
+        Длинный текст разбивается на предложения ≤500 символов — иначе модель обрывает голос."""
+        try:
+            import torch
+            import scipy.io.wavfile as wavfile
+        except ImportError:
+            raise ImportError("pip install torch scipy")
+
+        speaker = self.voice if self.voice else "baya"
+
+        if not hasattr(self, '_silero_model'):
+            self._silero_model, _ = torch.hub.load(
+                repo_or_dir='snakers4/silero-models',
+                model='silero_tts',
+                language='ru',
+                speaker='v4_ru',
+                trust_repo=True
+            )
+
+        sample_rate = 48000
+        MAX_SILERO_CHUNK = 200  # chars per chunk — консервативный предел
+
+        def _synthesize_chunk(chunk_text: str):
+            chunk_audio = self._silero_model.apply_tts(
+                text=chunk_text,
+                speaker=speaker,
+                sample_rate=sample_rate,
+                put_accent=True,
+                put_yo=True
+            )
+            # Silero возвращает тензор на GPU — переводим на CPU
+            if chunk_audio.device.type != 'cpu':
+                chunk_audio = chunk_audio.cpu()
+            return chunk_audio
+
+        if len(text) <= MAX_SILERO_CHUNK:
+            print(f"[Silero] 1 чанк, {len(text)} символов")
+            audio = _synthesize_chunk(text)
+        else:
+            import re
+            # Разбивка по границам предложений (точка/вопрос/воскл + пробел)
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            chunks = []
+            current = ""
+            for s in sentences:
+                if len(current) + len(s) + 1 > MAX_SILERO_CHUNK and current:
+                    chunks.append(current.strip())
+                    current = s
+                else:
+                    current = (current + " " + s).strip() if current else s
+            if current.strip():
+                chunks.append(current.strip())
+
+            print(f"[Silero] Всего {len(text)} символов → {len(chunks)} чанков")
+
+            # Синтез каждого чанка + пауза 0.3с между ними
+            audio_parts = []
+            silence_samples = int(sample_rate * 0.3)
+            for i, chunk in enumerate(chunks):
+                print(f"[Silero]   Чанк {i+1}/{len(chunks)}: {len(chunk)} символов → ", end="", flush=True)
+                part = _synthesize_chunk(chunk)
+                duration = part.shape[0] / sample_rate
+                print(f"{duration:.1f}с")
+                audio_parts.append(part)
+                if i < len(chunks) - 1:
+                    audio_parts.append(torch.zeros(silence_samples, dtype=part.dtype))
+
+            audio = torch.cat(audio_parts, dim=0)
+            total_duration = audio.shape[0] / sample_rate
+            print(f"[Silero] Итого: {total_duration:.1f}с аудио")
+
+        if output_path is None:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                output_path = f.name
+
+        wav_path = output_path.replace(".mp3", ".wav")
+        if wav_path == output_path:
+            wav_path = output_path + ".wav"
+        audio_np = audio.numpy()
+        wavfile.write(wav_path, sample_rate, audio_np)
+        print(f"[Silero] WAV записан: {os.path.getsize(wav_path)/1024:.0f} КБ, {audio_np.shape[0]/sample_rate:.1f}с")
+
+        from pydub import AudioSegment
+        seg = AudioSegment.from_file(wav_path, format="wav")
+        seg.export(output_path, format="mp3")
+        print(f"[Silero] MP3 записан: {os.path.getsize(output_path)/1024:.0f} КБ")
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+
         return output_path
 
 
