@@ -1,12 +1,12 @@
 {
   "version": "1.0.3",
-  "updated_at": "2026-06-08T08:41:59.417279",
+  "updated_at": "2026-06-20T11:52:58.810495",
   "skills": {
     "calendar_skill": {
       "path": "builtin\\calendar_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-06-08T08:41:59.354775",
+      "loaded_at": "2026-06-20T11:52:58.174249",
       "errors": 0,
       "version": "2.0.0"
     },
@@ -14,39 +14,39 @@
       "path": "builtin\\web_search_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-06-08T08:41:59.354775",
+      "loaded_at": "2026-06-20T11:52:58.205505",
       "errors": 0,
       "version": "2.0.1"
     },
     "content-sanitizer": {
-      "path": "custom\\content-sanitizer",
+      "path": "builtin\\content-sanitizer",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.370408",
+      "loaded_at": "2026-06-20T11:52:58.174249",
       "errors": 0,
       "version": "1.0.0"
     },
     "persona-extractor": {
-      "path": "custom\\persona-extractor",
+      "path": "builtin\\persona-extractor",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.386039",
+      "loaded_at": "2026-06-20T11:52:58.189883",
       "errors": 0,
       "version": "1.0.0"
     },
     "session-analyzer": {
-      "path": "custom\\session-analyzer",
+      "path": "builtin\\session-analyzer",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.417279",
+      "loaded_at": "2026-06-20T11:52:58.205505",
       "errors": 0,
       "version": "1.0.0"
     },
     "url-content-fetcher": {
-      "path": "custom\\url-content-fetcher",
+      "path": "builtin\\url-content-fetcher",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.417279",
+      "loaded_at": "2026-06-16T09:00:47.451675",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -54,7 +54,7 @@
       "path": "custom\\moex_stock_tracker",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-06-08T08:41:59.386039",
+      "loaded_at": "2026-06-20T11:52:58.794871",
       "errors": 0,
       "version": "3.0.0"
     },
@@ -70,23 +70,23 @@
       "path": "custom\\kazan_direction_trains",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-06-08T08:41:59.386039",
+      "loaded_at": "2026-06-20T11:52:58.794871",
       "errors": 0,
       "version": "1.1.0"
     },
     "codebase-mapper": {
-      "path": "custom\\codebase-mapper",
+      "path": "builtin\\codebase-mapper",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.370408",
+      "loaded_at": "2026-06-20T11:52:58.174249",
       "errors": 0,
       "version": "1.0.0"
     },
     "rss-news-aggregator": {
-      "path": "custom\\rss-news-aggregator",
+      "path": "builtin\\rss-news-aggregator",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.417279",
+      "loaded_at": "2026-06-20T11:52:58.189883",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -94,47 +94,183 @@
       "path": "builtin\\weather_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-06-08T08:41:59.354775",
+      "loaded_at": "2026-06-20T11:52:58.205505",
       "errors": 0,
       "version": "1.0.0"
     },
     "initiative-agent": {
-      "path": "custom\\initiative-agent",
+      "path": "builtin\\initiative-agent",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.386039",
+      "loaded_at": "2026-06-20T11:52:58.189883",
       "errors": 0,
       "version": "1.0.0"
     },
     "auras-heart": {
-      "path": "custom\\auras-heart",
+      "path": "builtin\\auras-heart",
       "enabled": true,
-      "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.354775",
+      "stability": "stable",
+      "loaded_at": "2026-06-20T11:52:58.174249",
       "errors": 0,
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     "daily-bridge": {
-      "path": "custom\\daily-bridge",
+      "path": "builtin\\daily-bridge",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.370408",
+      "loaded_at": "2026-06-20T11:52:58.174249",
       "errors": 0,
       "version": "1.0.0"
     },
     "auras-whisper": {
-      "path": "custom\\auras-whisper",
+      "path": "builtin\\auras-whisper",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.370408",
+      "loaded_at": "2026-06-20T11:52:58.174249",
       "errors": 0,
       "version": "1.0.0"
     },
     "auras-care": {
-      "path": "custom\\auras-care",
+      "path": "builtin\\auras-care",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-06-08T08:41:59.354775",
+      "loaded_at": "2026-06-20T11:52:58.174249",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "api-finder": {
+      "path": "custom\\api-finder",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-20T11:52:58.221132",
+      "errors": 0,
+      "version": "6.0.0"
+    },
+    "radio_browser": {
+      "path": "custom\\radio_browser",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-12T16:07:57.285659",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "background-music": {
+      "path": "custom\\background-music",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-12T14:20:38.395551",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "sms_sender": {
+      "path": "custom\\sms_sender",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-20T11:52:58.810495",
+      "errors": 0,
+      "version": "1.1.0"
+    },
+    "radio": {
+      "path": "builtin\\radio",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-20T11:52:58.189883",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-logic": {
+      "path": "builtin\\auras-logic",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.174249",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-me-time": {
+      "path": "builtin\\auras-me-time",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.174249",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "vibe-coach": {
+      "path": "builtin\\vibe-coach",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.205505",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "osint_key_hunter": {
+      "path": "custom\\osint_key_hunter",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.810495",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "engineering-mindset": {
+      "path": "builtin\\engineering-mindset",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-20T11:52:58.174249",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "gh_key_hunter": {
+      "path": "builtin\\gh_key_hunter",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-20T11:52:58.189883",
+      "errors": 0,
+      "version": "1.0.1"
+    },
+    "browser-automation": {
+      "path": "custom\\browser-automation",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.330508",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "freelance-manager": {
+      "path": "custom\\freelance-manager",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.330508",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "infographic-generator": {
+      "path": "custom\\infographic-generator",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.794871",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "project_manager": {
+      "path": "builtin\\project_manager",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-20T11:52:58.189883",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "astrologer": {
+      "path": "custom\\astrologer",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.221132",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "token_counter": {
+      "path": "custom\\token_counter",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-20T11:52:58.810495",
       "errors": 0,
       "version": "1.0.0"
     }

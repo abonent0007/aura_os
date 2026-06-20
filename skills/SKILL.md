@@ -237,6 +237,54 @@ from autogen.beta import Agent      # создать под-агента для 
 from autogen.beta import config as ag_config  # OpenAIConfig
 ```
 
+### api-finder — поиск API для новых скиллов
+Прежде чем создавать скилл с нуля, проверь нет ли готового API! Используй инструменты скилла `api-finder`:
+- `search_apis("запрос")` — найти подходящее API
+- `suggest_skill_from_api("Название")` — получить готовый manifest + инструкцию
+- `list_categories()` — посмотреть категории (Animals, Finance, Weather, Music...)
+- `get_api_details("Название")` — узнать про аутентификацию
+- `get_random_api("Категория")` — случайное API для вдохновения
+
+**ВАЖНО**: ты можешь вызывать эти инструменты когда пользователь просит новый скилл. `suggest_skill_from_api` даст тебе готовый шаблон — используй его с `edit_skill_file`.
+
+Данные из каталога public-apis (1000+ бесплатных API), кешируются локально на 24 часа.
+
+### Хранение API-ключей: skills/custom/.env
+
+Все ключи для скиллов хранятся в одном файле: `skills/custom/.env`
+
+**Формат:**
+```
+# API keys for custom skills
+NAME_api_key=VALUE  # краткое описание для чего ключ
+```
+
+**Как использовать:**
+1. `list_api_keys()` — посмотреть какие ключи уже есть (показывает имена и описания, значения скрыты)
+2. `save_api_key("NASA_api_key", "abc123", "NASA API для астрономии")` — сохранить новый ключ
+3. `delete_api_key("NASA_api_key")` — удалить ключ
+4. `scan_free_apis_for_keys()` — найти бесплатные API которым нужны ключи
+
+**Как скилл читает ключ из .env:**
+```python
+# В skill.py нового скилла:
+from pathlib import Path
+_ENV = Path(__file__).parent.parent / ".env"  # skills/custom/.env
+
+def _get_key(name: str) -> str:
+    if _ENV.exists():
+        for line in _ENV.read_text(encoding="utf-8").readlines():
+            if line.startswith(name + "="):
+                return line.split("=", 1)[1].split("#")[0].strip()
+    return ""
+```
+
+**ПРАВИЛО:** когда создаёшь новый скилл которому нужен API-ключ — НЕ вставляй ключ прямо в код. Вместо этого:
+1. Сохрани ключ через `save_api_key("ИМЯ_api_key", "значение", "описание")`
+2. В skill.py читай ключ из `skills/custom/.env` через `_get_key("ИМЯ_api_key")`
+
+**Ежедневно:** запускай `scan_free_apis_for_keys()` чтобы увидеть новые бесплатные API и предложить пользователю сохранить ключи.
+
 ---
 
 ## Пример: weather_skill/SKILL.md
