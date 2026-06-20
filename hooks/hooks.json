@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "session_start": ["session_start.py"],
+    "before_tool": [],
+    "after_tool": [],
+    "session_end": []
+  }
+}

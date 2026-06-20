@@ -103,20 +103,21 @@ class Agent:
         text: str,
         stream: MemoryStream = None,
         variables: dict = None,
-        context: str = ""
+        context: str = "",
+        compressed_history: str = ""
     ) -> AgentResponse:
         """
         ReAct agent: Thought → Action → Observation loop.
         context — динамический контекст (факты, напоминания).
         """
-        messages = self._build_messages(text, stream, context)
+        messages = self._build_messages(text, stream, context, compressed_history)
 
         openai_tools = None
         if self.tools:
             openai_tools = [function_to_openai_tool(f) for f in self.tools]
 
-        # ReAct: максимум 10 циклов Thought→Action→Observation
-        for cycle in range(10):
+        # ReAct: максимум 30 циклов Thought→Action→Observation
+        for cycle in range(30):
             kwargs = {
                 "model": self.config.model,
                 "messages": messages,
@@ -238,32 +239,43 @@ class Agent:
             # Final answer (нет tool calls)
             return AgentResponse(content=thought)
 
-        return AgentResponse(content="I hit a processing limit. Let me try a simpler approach — could you rephrase?")
+        return AgentResponse(content="Это очень сложная задача, но я могу продолжить! Только скажи мне «продолжай» — и я доведу её до конца.")
 
-    def _build_messages(self, text: str, stream: MemoryStream = None, context: str = "") -> list:
+    def _build_messages(self, text: str, stream: MemoryStream = None, context: str = "", compressed_history: str = "") -> list:
         """
-        Оптимизировано для prompt caching:
-        1. SYSTEM_PROMPT — первый, статический → кешируется DeepSeek
-        2. Контекст (факты/напоминания) — отдельно, короткий
-        3. История диалога — последние 20 сообщений
-        4. Сообщение пользователя
+        Оптимизирована экономия токенов:
+        1. SYSTEM_PROMPT — первый, статический → кешируется DeepSeek (cache_control: ephemeral)
+        2. Сжатая история (конспект старых диалогов от компрессора)
+        3. Динамический контекст (факты/напоминания) — отдельно, короткий
+        4. История диалога — последние 30 сообщений (sliding window)
+        5. Сообщение пользователя
         """
         messages = []
 
-        # 1. Статический системный промпт — кешируется
+        # 1. Статический системный промпт — DeepSeek кеширует автоматически
         if self.system_message:
-            messages.append({"role": "system", "content": self.system_message})
+            messages.append({
+                "role": "system",
+                "content": self.system_message
+            })
 
-        # 2. Динамический контекст — короткий, меняется
+        # 2. Сжатая история (конспект от компрессора)
+        if compressed_history and compressed_history.strip():
+            messages.append({
+                "role": "system",
+                "content": f"[Краткая история диалога]\n{compressed_history}"
+            })
+
+        # 3. Динамический контекст — короткий, меняется
         if context and context.strip():
             messages.append({"role": "system", "content": f"[Текущий контекст]\n{context}"})
 
-        # 3. История диалога
+        # 4. История диалога — sliding window 30 сообщений
         if stream and stream.history._messages:
-            for m in stream.history._messages[-50:]:
+            for m in stream.history._messages[-30:]:
                 messages.append(m)
 
-        # 4. Сообщение пользователя
+        # 5. Сообщение пользователя
         messages.append({"role": "user", "content": text})
 
         return messages
