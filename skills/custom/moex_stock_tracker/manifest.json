@@ -1,0 +1,15 @@
+{
+  "name": "moex_stock_tracker",
+  "version": "3.0.0",
+  "author": "AURA AI + Юрий Птицын",
+  "description": "MOEX Stock Tracker: цена, объём, MACD(12/26/9) с Signal Line и Histogram. Доработан по рекомендациям Ауры.",
+  "category": "tools",
+  "dependencies": ["httpx"],
+  "python_version": ">=3.10",
+  "triggers": ["акции", "MOEX", "тикер", "SBER", "GAZP", "MACD", "биржа", "котировки", "свечи", "сколько стоят"],
+  "permissions": ["network"],
+  "auto_created": false,
+  "stability": "stable",
+  "created_at": "2026-05-19T11:56:18",
+  "updated_at": "2026-05-19T16:10:00"
+}

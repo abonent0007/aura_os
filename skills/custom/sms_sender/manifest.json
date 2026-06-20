@@ -1,0 +1,15 @@
+{
+  "name": "sms_sender",
+  "version": "1.1.0",
+  "author": "AURA OS",
+  "description": "Отправка SMS через sms.ru API на номер Юрия и другие номера. Ключ хранится в skills/custom/.env (sms_ru_api_key).",
+  "category": "tools",
+  "dependencies": ["httpx"],
+  "python_version": ">=3.11",
+  "triggers": ["отправь смс", "отправь сообщение", "sms", "смс", "на телефон", "пошли на номер", "отправь ссылку", "пришли на телефон"],
+  "permissions": ["network"],
+  "auto_created": true,
+  "stability": "stable",
+  "created_at": "2025-06-07",
+  "updated_at": "2026-06-13T12:00:00"
+}
