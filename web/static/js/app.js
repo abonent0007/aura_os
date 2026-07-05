@@ -25,7 +25,7 @@ function initNavigation() {
     });
     
     // Загружаем страницу из хеша
-    const hash = window.location.hash.slice(1) || 'dashboard';
+    const hash = window.location.hash.slice(1) || 'chat';
     navigateTo(hash);
 }
 

@@ -90,8 +90,10 @@ async function sendChatMessage() {
         removeTyping(typingId);
         appendChatMessage('assistant', data.text);
 
-        // Авто-воспроизведение TTS + Аватар (только в режиме Ауры)
-        if (chatMode === 'aura' && data.text) {
+        // Авто-воспроизведение TTS (потоковое: быстрое начало + полный текст)
+        if (chatMode === 'aura' && data.text && data.text.length > 30) {
+            streamPlayAudio(data.text);
+        } else if (chatMode === 'aura' && data.text) {
             const lastMsg = document.getElementById('chatMessages').lastElementChild;
             const btn = lastMsg?.querySelector('.message-footer button:last-child');
             if (btn) playAudio(btn, data.text);
@@ -140,7 +142,7 @@ function appendChatMessage(role, text) {
     div.className = `chat-message ${role}`;
 
     const safeText = escapeHtml(text);
-    const rendered = renderMarkdown(safeText).replace(/\n/g, '<br>');
+    const rendered = renderMarkdown(safeText);
 
     const msgId = 'msg-' + Date.now();
         const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -165,10 +167,31 @@ function appendChatMessage(role, text) {
     }
 
     container.appendChild(div);
+    // Подсветка синтаксиса в блоках кода
+    div.querySelectorAll('pre code').forEach(el => { try { hljs.highlightElement(el) } catch(e) {} });
     if (!chatPaused) {
         container.scrollTop = container.scrollHeight;
     }
+    updateScrollButton();
 }
+
+// Прокрутка к последнему сообщению
+function scrollToBottom() {
+    const c = document.getElementById('chatMessages');
+    if (c) { c.scrollTop = c.scrollHeight; updateScrollButton(); }
+}
+function updateScrollButton() {
+    const c = document.getElementById('chatMessages');
+    const b = document.getElementById('scrollBottom');
+    if (!c || !b) return;
+    const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 120;
+    b.classList.toggle('visible', !nearBottom && c.scrollHeight > c.clientHeight);
+}
+// Отслеживаем прокрутку
+document.addEventListener('DOMContentLoaded', () => {
+    const c = document.getElementById('chatMessages');
+    if (c) c.addEventListener('scroll', updateScrollButton);
+});
 
 function toggleChatPause() {
     chatPaused = !chatPaused;
@@ -182,15 +205,16 @@ function toggleChatPause() {
 }
 
 function renderMarkdown(text) {
-    // Code blocks with copy button
+    // Code blocks with copy button + language class for highlighting
     text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
         const escaped = escapeHtml(code.trim());
+        const langCls = lang ? `language-${lang}` : 'language-python';
         return `<div class="code-block">
             <div class="code-header">
-                <span>${lang || 'code'}</span>
+                <span>${lang || 'python'}</span>
                 <button class="btn btn-sm" onclick="copyCode(this)">Копировать</button>
             </div>
-            <pre><code>${escaped}</code></pre>
+            <pre><code class="${langCls}">${escaped}</code></pre>
         </div>`;
     });
 
@@ -268,6 +292,18 @@ function copyMessage(copyId) {
     if (!el) return;
     const text = el.dataset.copyText || '';
     navigator.clipboard.writeText(text).catch(() => {});
+}
+
+// Потоковый TTS: быстрое начало + полный текст
+async function streamPlayAudio(text) {
+    const clean = text.replace(/\*\*(.+?)\*\*/g,'$1').replace(/\*(.+?)\*/g,'$1').replace(/`(.+?)`/g,'$1')
+        .replace(/```[\s\S]*?```/g,'').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/\s+/g,' ').trim();
+    const first = clean.split(/[.!?] /).slice(0, 2).join('. ') || clean.substring(0, 300);
+    let q=null;
+    try{const r=await fetch('/api/chat/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:first.substring(0,500),skip_avatar:true})});if(r.ok)q=await r.blob()}catch(e){}
+    const fp=fetch('/api/chat/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:clean.substring(0,6000)})}).then(r=>r.ok?r.blob():null).catch(()=>null);
+    if(q){if(audioPlayer){audioPlayer.pause();audioPlayer=null}audioPlayer=new Audio(URL.createObjectURL(q));audioPlayer.play().catch(()=>{})}
+    const fb=await fp;if(fb){const wp=audioPlayer&&!audioPlayer.paused;const pos=audioPlayer?audioPlayer.currentTime:0;if(audioPlayer){audioPlayer.pause();audioPlayer=null}audioPlayer=new Audio(URL.createObjectURL(fb));if(wp){audioPlayer.currentTime=Math.max(0,pos-0.5);audioPlayer.play().catch(()=>{})}}
 }
 
 function loadAudioForLastMessage(text) {

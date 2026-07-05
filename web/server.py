@@ -121,7 +121,7 @@ def get_tailscale_ip() -> Optional[str]:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except:
+    except Exception:
         pass
     return None
 
@@ -134,7 +134,7 @@ def get_tailscale_status() -> dict:
         )
         if result.returncode == 0:
             return json.loads(result.stdout)
-    except:
+    except Exception:
         pass
     return {"error": "Tailscale не установлен или не настроен"}
 
@@ -156,7 +156,7 @@ async def broadcast(event: str, data: dict):
     for connection in state.active_connections:
         try:
             await connection.send_json({"event": event, "data": data})
-        except:
+        except Exception:
             pass
 
 
@@ -173,13 +173,14 @@ async def index(request: Request):
         name="index.html",
         context={
             "app_name": "AURA OS",
-            "version": "1.0.3",
+            "version": "4.1.0",
             "port": PORT,
             "tailscale_ip": tailscale_ip,
             "tailscale_hostname": TAILSCALE_HOSTNAME,
             "local_url": f"http://localhost:{PORT}",
             "tailscale_url": f"http://{TAILSCALE_HOSTNAME}:{PORT}" if tailscale_ip else None,
-        }
+        },
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
     )
 
 
@@ -205,7 +206,7 @@ async def get_status():
         try:
             events = state.aura_agent.db.get_upcoming_events(days=7)
             calendar_count = len(events)
-        except:
+        except Exception:
             pass
     
     return {
@@ -571,6 +572,56 @@ async def diagnose():
     return {"report": state.aura_agent.get_self_diagnosis()}
 
 
+@app.get("/api/health")
+async def health():
+    """Health check: состояние всех подсистем."""
+    health_status = {"status": "ok", "subsystems": {}}
+    
+    # DeepSeek API
+    try:
+        import os
+        key = os.getenv("DEEPSEEK_API_KEY", "")
+        health_status["subsystems"]["deepseek"] = "ok" if key else "no_key"
+    except Exception as e:
+        health_status["subsystems"]["deepseek"] = f"error: {e}"
+    
+    # Database
+    if state.aura_agent and state.aura_agent.db:
+        try:
+            state.aura_agent.db.conn.execute("SELECT 1")
+            health_status["subsystems"]["database"] = "ok"
+        except Exception as e:
+            health_status["subsystems"]["database"] = f"error: {e}"
+    else:
+        health_status["subsystems"]["database"] = "not_initialized"
+    
+    # Skills
+    try:
+        from aura_core import _skill_manager_ref
+        if _skill_manager_ref:
+            total = len(_skill_manager_ref.skills)
+            health_status["subsystems"]["skills"] = f"ok ({total} loaded)"
+        else:
+            health_status["subsystems"]["skills"] = "not_available"
+    except Exception as e:
+        health_status["subsystems"]["skills"] = f"error: {e}"
+    
+    # Calendar
+    if state.aura_agent:
+        try:
+            events = len(state.aura_agent.db.get_upcoming_events(days=1))
+            health_status["subsystems"]["calendar"] = f"ok ({events} events today)"
+        except Exception as e:
+            health_status["subsystems"]["calendar"] = f"error: {e}"
+    
+    # Overall
+    errors = [v for v in health_status["subsystems"].values() if v.startswith("error")]
+    if errors:
+        health_status["status"] = "degraded"
+    
+    return health_status
+
+
 # ============================================================
 # 12. API — ОБЩЕНИЕ С АГЕНТОМ
 # ============================================================
@@ -606,6 +657,7 @@ async def chat_expert(request: MessageRequest):
 
 class TTSRequest(BaseModel):
     text: str
+    skip_avatar: bool = False
 
 
 @app.post("/api/chat/tts")
@@ -633,12 +685,12 @@ async def chat_tts(request: TTSRequest):
         except Exception:
             pass
 
-        # Аватар: запускаем анимацию синхронно со звуком
-        if state.avatar:
+        # Аватар: только если не пропущен (стриминговые превью пропускают)
+        if state.avatar and not request.skip_avatar:
             try:
                 import threading
                 threading.Thread(
-                    target=lambda: state.avatar.speak(request.text, audio_duration),
+                    target=lambda: state.avatar.speak(text, audio_duration),
                     daemon=True
                 ).start()
             except Exception:
@@ -744,6 +796,15 @@ def init_web_server(aura_agent, skill_manager, rollback_manager, system_monitor,
     state.rollback_manager = rollback_manager
     state.system_monitor = system_monitor
     state.skill_builder = skill_builder
+
+    # Регистрируем ссылки для авто-перезагрузки скиллов в ядре
+    import aura_core
+    aura_core._skill_manager_ref = skill_manager
+    aura_core._agent_ref = aura_agent.agent
+    skill_tools, triggers = skill_manager.get_tools_with_triggers()
+    if skill_tools:
+        aura_agent.agent.add_tools(skill_tools, triggers)
+        print(f"[skills] Integrated {len(skill_tools)} skill tools")
 
     # Инициализация аватара
     try:
