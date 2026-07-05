@@ -1,0 +1,18 @@
+{
+  "checkins": [
+    {
+      "type": "water",
+      "ts": "2026-06-28T09:33:56.214270"
+    }
+  ],
+  "favorites": [],
+  "water_interval_minutes": 60,
+  "overwork_threshold_minutes": 120,
+  "last_water_reminder": "2026-06-28T09:35:36.805369",
+  "last_overwork_notice": null,
+  "stats": {
+    "water_reminders_sent": 2,
+    "overwork_notices_sent": 0,
+    "checkins_total": 1
+  }
+}

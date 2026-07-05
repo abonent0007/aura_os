@@ -1,0 +1,21 @@
+{
+  "name": "engineering-mindset",
+  "version": "2.0.0",
+  "author": "AURA OS (adapted from Matt Pocock's skills + Addy Osmani's agent-skills)",
+  "description": "Инженерное мышление: отладка (Stop-the-Line + 5 фаз), TDD (Red-Green-Refactor), архитектурный анализ, source-driven dev, инкрементальная реализация (вертикальные срезы), систематическое упрощение кода (5 принципов), 5-осевое ревью.",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": [
+    "создай скилл", "напиши код", "отладка", "debug", "тест", "tdd",
+    "рефакторинг", "архитектура кода", "баг", "ошибка в коде",
+    "как исправить", "научи программировать", "упрости код",
+    "слишком сложно", "ревью", "code review", "проверь код",
+    "инкрементально", "маленькими шагами", "вертикальный срез"
+  ],
+  "permissions": ["filesystem"],
+  "auto_created": false,
+  "stability": "stable",
+  "created_at": "2026-06-16T00:00:00",
+  "updated_at": "2026-06-20T00:00:00"
+}

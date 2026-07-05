@@ -1,0 +1,39 @@
+{
+  "sessions": [
+    {
+      "goal": "Починить synastry/skill.py — выпилить дубликаты кода и заменить на импорты из astrologer, исправить баг random_offset",
+      "started": "2026-06-27T16:18:15.001641",
+      "steps": [],
+      "outcome": null
+    },
+    {
+      "goal": "Найти и исправить ошибку random_offset в synastry_report. Функция где-то в aura_core.py или skill.py в корне проекта. Нужно найти все вхождения random_offset и заменить на правильный вызов (вероятно random.uniform или random.random).",
+      "started": "2026-06-27T16:30:31.638712",
+      "steps": [],
+      "outcome": null
+    },
+    {
+      "goal": "Добавить в скилл shift поддержку отпусков: установка периода, пауза предупреждений, напоминание в последний день если дальше смена",
+      "started": "2026-06-28T10:58:20.786785",
+      "steps": [
+        {
+          "time": "2026-06-28T10:58:55.731447",
+          "description": "Создан скилл shift (отпуска): shift_set_vacation, shift_vacation_status, shift_clear_vacation. Установлен отпуск Юры 13-26 июля. Проверен график после отпуска.",
+          "result": "Отпуск на 14 дней. После отпуска: 27-28 выходные, первая смена 29 июля."
+        },
+        {
+          "time": "2026-06-28T12:33:35.416638",
+          "description": "car: удалён мёртвый код km_due/months_due",
+          "result": ""
+        }
+      ],
+      "outcome": null
+    }
+  ],
+  "bugs_fixed": 1,
+  "skills_created": 1,
+  "tests_written": 0
+}gs_fixed": 1,
+  "skills_created": 1,
+  "tests_written": 0
+}

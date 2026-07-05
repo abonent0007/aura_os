@@ -1,0 +1,14 @@
+{
+  "name": "rss-news-aggregator",
+  "version": "1.0.0",
+  "author": "AURA OS",
+  "description": "Агрегатор новостей Москвы, области, MOEX, Госуслуг и Яндекса через RSS-ленты",
+  "category": "tools",
+  "dependencies": ["httpx"],
+  "python_version": ">=3.11",
+  "triggers": ["что нового", "новости", "сводка", "дайджест", "что происходит", "rss"],
+  "permissions": ["network"],
+  "auto_created": true,
+  "stability": "testing",
+  "created_at": "2026-06-07T00:00:00"
+}

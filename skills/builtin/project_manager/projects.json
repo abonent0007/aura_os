@@ -1,0 +1,20 @@
+{
+  "debug-synastry": {
+    "type": "python",
+    "description": "Временный проект для отладки synastry",
+    "created_at": "2026-06-27T16:28:01.276141",
+    "updated_at": "2026-06-27T16:41:17.822111"
+  },
+  "synastry-debug": {
+    "type": "python",
+    "description": "Отладка synastry skill",
+    "created_at": "2026-06-27T16:35:24.002662",
+    "updated_at": "2026-06-27T16:35:24.002662"
+  },
+  "find-bug": {
+    "type": "python",
+    "description": "Временный проект для поиска random_offset в synastry/skill.py",
+    "created_at": "2026-06-27T16:43:18.594401",
+    "updated_at": "2026-06-27T16:43:54.760624"
+  }
+}

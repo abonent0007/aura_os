@@ -1,0 +1,13 @@
+{
+  "name": "gh_key_hunter",
+  "version": "1.0.1",
+  "author": "Yurii & Aura",
+  "description": "Автономный охотник за API-ключами через GitHub Code Search API",
+  "category": "tools",
+  "dependencies": [],
+  "triggers": ["охота за ключами", "найди ключи", "hunt keys", "github keys"],
+  "permissions": ["network"],
+  "auto_created": false,
+  "stability": "stable",
+  "created_at": "2025-06-07"
+}

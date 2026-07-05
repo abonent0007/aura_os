@@ -1,0 +1,14 @@
+{
+  "name": "aura-senses",
+  "version": "1.0.0",
+  "author": "AURA OS",
+  "description": "Сенсоры Ауры: глаза (скриншоты), уши (wake-word), обоняние (системные метрики). Только локально.",
+  "category": "personality",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": ["что ты видишь", "скриншот", "как система", "метрики", "приватный режим", "как компьютер"],
+  "permissions": ["screenshot", "system_info"],
+  "auto_created": false,
+  "stability": "testing",
+  "created_at": "2026-06-27"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "project_manager",
+  "version": "2.0.0",
+  "author": "Аура + Юра",
+  "description": "Управление проектами в Программном цехе (skills/project/) — создание, чтение, запись, удаление, запуск самостоятельных программ на Python, Node.js, JS, HTML/CSS, Rust.",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": ["создай проект", "новый проект", "проект", "project", "покажи проекты", "дерево проекта", "запусти проект", "программный цех"],
+  "permissions": ["file_system", "subprocess", "browser"],
+  "auto_created": true,
+  "stability": "stable",
+  "created_at": "2026-06-07",
+  "updated_at": "2026-06-20T00:00:00"
+}
