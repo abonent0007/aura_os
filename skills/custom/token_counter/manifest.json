@@ -1,0 +1,14 @@
+{
+  "name": "token_counter",
+  "version": "1.0.0",
+  "author": "Aura",
+  "description": "Подсчёт потраченных токенов и стоимости обращений к DeepSeek API",
+  "category": "automation",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": ["сколько токенов", "сколько потрачено", "стоимость запросов", "аппетит", "токены", "общая сумма"],
+  "permissions": ["file_read", "file_write"],
+  "auto_created": true,
+  "stability": "testing",
+  "created_at": "2026-01-14"
+}

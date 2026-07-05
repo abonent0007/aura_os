@@ -1,0 +1,14 @@
+{
+  "name": "transit-watcher",
+  "version": "1.0.0",
+  "author": "Aura 💫",
+  "description": "Отслеживание транзитов планет относительно натальных карт. Предупреждения о важных днях.",
+  "category": "entertainment",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": ["транзит", "транзиты", "важные дни", "астрологический прогноз", "что по звёздам", "планетарный прогноз"],
+  "permissions": ["calendar"],
+  "auto_created": false,
+  "stability": "fresh",
+  "created_at": "2025-07-18"
+}

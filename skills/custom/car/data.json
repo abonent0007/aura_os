@@ -1,0 +1,24 @@
+{
+  "car": {
+    "brand": "ВАЗ",
+    "model": "21093",
+    "year": 2002,
+    "nickname": "девятка"
+  },
+  "mileage_km": null,
+  "service_history": [],
+  "schedule": {
+    "engine_oil_filter": {"km": 10000, "months": 12, "name": "Масло ДВС + масляный фильтр", "category": "motor"},
+    "air_filter": {"km": 20000, "months": 12, "name": "Воздушный фильтр", "category": "filters"},
+    "fuel_filter": {"km": 20000, "months": 24, "name": "Топливный фильтр", "category": "filters"},
+    "spark_plugs": {"km": 20000, "months": 24, "name": "Свечи зажигания", "category": "ignition"},
+    "timing_belt": {"km": 60000, "months": 60, "name": "Ремень ГРМ (сервис)", "category": "critical"},
+    "brake_fluid": {"km": 30000, "months": 24, "name": "Тормозная жидкость", "category": "brakes"},
+    "coolant": {"km": 40000, "months": 24, "name": "Антифриз (ОЖ)", "category": "cooling"},
+    "gearbox_oil": {"km": 50000, "months": 60, "name": "Масло КПП", "category": "transmission"},
+    "alternator_belt": {"km": 40000, "months": 48, "name": "Ремень генератора", "category": "motor"},
+    "front_brake_pads": {"km": 30000, "months": 24, "name": "Передние тормозные колодки", "category": "brakes"},
+    "cabin_filter": {"km": 20000, "months": 12, "name": "Салонный фильтр", "category": "filters"},
+    "cv_joint_boots": {"km": 30000, "months": 24, "name": "Пыльники ШРУСов (осмотр)", "category": "chassis"}
+  }
+}

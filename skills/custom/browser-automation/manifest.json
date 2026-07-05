@@ -1,0 +1,12 @@
+{
+  "name": "browser-automation",
+  "version": "1.0.0",
+  "author": "AURA OS",
+  "description": "Headless-браузер на Playwright: скриншоты, парсинг динамических страниц, заполнение форм, сбор данных. Фундамент для автоматизации работы с сайтами.",
+  "category": "tools",
+  "dependencies": ["playwright"],
+  "triggers": ["браузер", "browser", "скриншот", "screenshot", "открой страницу", "собери данные", "заполни форму", "playwright"],
+  "permissions": ["network", "filesystem"],
+  "auto_created": true,
+  "stability": "testing"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "test-runner",
+  "version": "1.0.0",
+  "description": "Комплексный тест инфраструктуры AURA OS: infographic-generator, browser-automation, freelance-manager. Быстрый smoke-тест и полный прогон.",
+  "author": "Юра",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": ["запусти тесты", "smoke test", "протестируй"],
+  "permissions": ["subprocess"],
+  "stability": "testing",
+  "created_at": "2026-06-16"
+}

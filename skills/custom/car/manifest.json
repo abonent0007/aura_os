@@ -1,0 +1,26 @@
+{
+  "name": "car",
+  "version": "1.0.0",
+  "author": "AURA OS",
+  "description": "Авто-органайзер для ВАЗ 21093. Учёт обслуживания, напоминания о ТО, расходники.",
+  "category": "lifestyle",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": [
+    "машина", "авто", "обслуживание", "замена масла", "ТО",
+    "техобслуживание", "пробег", "что с машиной", "регламент",
+    "ВАЗ", "сервис", "расходники", "двигатель", "ремонт"
+  ],
+  "tools": [
+    "car_info",
+    "car_add_service",
+    "car_upcoming",
+    "car_set_mileage",
+    "car_status",
+    "car_schedule"
+  ],
+  "permissions": ["filesystem"],
+  "auto_created": true,
+  "stability": "stable",
+  "created_at": "2026-06-28"
+}

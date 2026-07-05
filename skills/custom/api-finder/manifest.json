@@ -1,0 +1,21 @@
+{
+  "name": "api-finder",
+  "version": "7.0.0",
+  "author": "AURA OS",
+  "description": "Поиск API в каталоге (1554+), охота за ключами (DuckDuckGo + GitHub), управление API-ключами, настройка прокси.",
+  "category": "tools",
+  "dependencies": ["httpx", "duckduckgo-search", "beautifulsoup4"],
+  "python_version": ">=3.11",
+  "triggers": [
+    "api", "найди api", "подбери api", "какое api",
+    "ключ", "api_key", "сохрани ключ", "покажи ключи",
+    "охота на ключи", "найди ключи", "github ключи",
+    "прокси", "proxy", "настрой прокси", "проверь прокси",
+    "валидатор", "проверь ключ"
+  ],
+  "permissions": ["network", "filesystem"],
+  "auto_created": false,
+  "stability": "testing",
+  "created_at": "2026-06-12",
+  "updated_at": "2026-06-27"
+}
