@@ -279,6 +279,107 @@ class TextToSpeech:
             self.tts_engine = None
 
     @staticmethod
+    def _normalize_for_tts(text: str) -> str:
+        import re
+        
+        # ── СЛОВАРЬ ЧИСЕЛ ──
+        units = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять']
+        teens = ['десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать',
+                 'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать']
+        tens = ['', '', 'двадцать', 'тридцать', 'сорок', 'пятьдесят', 'шестьдесят',
+                'семьдесят', 'восемьдесят', 'девяносто']
+        hundreds = ['', 'сто', 'двести', 'триста', 'четыреста', 'пятьсот',
+                    'шестьсот', 'семьсот', 'восемьсот', 'девятьсот']
+        
+        def num_to_words(n: int) -> str:
+            if n < 0: return 'минус ' + num_to_words(-n)
+            if n == 0: return 'ноль'
+            result = []
+            if n >= 1000:
+                t = n // 1000
+                if t == 1: result.append('одна тысяча')
+                elif t == 2: result.append('две тысячи')
+                elif t < 5: result.append(num_to_words(t) + ' тысячи')
+                else: result.append(num_to_words(t) + ' тысяч')
+                n %= 1000
+            if n >= 100:
+                result.append(hundreds[n // 100])
+                n %= 100
+            if n >= 20:
+                result.append(tens[n // 10])
+                n %= 10
+                if n > 0: result.append(units[n])
+            elif n >= 10:
+                result.append(teens[n - 10])
+            elif n > 0:
+                result.append(units[n])
+            return ' '.join(filter(None, result))
+        
+        def replace_num(m):
+            num_str = m.group(0)
+            try:
+                return num_to_words(int(num_str.replace(' ', '')))
+            except ValueError:
+                return num_str
+        
+        # ── ШАГ 1: ДЕСЯТИЧНЫЕ ЧИСЛА (до целых!) ──
+        def _decimal_repl(m):
+            left = num_to_words(int(m.group(1)))
+            right = num_to_words(int(m.group(2)))
+            return f'{left} точка {right}'
+        text = re.sub(r'(\d+)\.(\d+)', _decimal_repl, text)
+        
+        # ── ШАГ 2: ЦЕЛЫЕ ЦИФРЫ ──
+        text = re.sub(r'(?<![#№.\w])\d{4,}(?!\w)', replace_num, text)
+        text = re.sub(r'(?<![#№.\w])\d{2,3}(?!\w)', replace_num, text)
+        text = re.sub(r'(?<![#№.\w])\d(?![\d\w])', replace_num, text)
+        # Второй проход: цифры после "номер ", "пункт ", "шаг " итд
+        text = re.sub(r'(?<=номер )\d{1,6}\b', replace_num, text)
+        text = re.sub(r'(?<=пункт )\d{1,6}\b', replace_num, text)
+        text = re.sub(r'(?<=шаг )\d{1,6}\b', replace_num, text)
+        text = re.sub(r'(?<=версия )\d{1,6}\b', replace_num, text)
+        text = re.sub(r'(?<=v)\d+(?=\b)', replace_num, text)
+        
+        # ── ШАГ 2: ЗНАЧКИ В СЛОВА ──
+        text = text.replace('%', ' процентов')
+        # Температура: 25°C, 25C → 25 градусов
+        text = re.sub(r'(\d+)\s*°\s*C\b', r'\1 градусов Цельсия', text)
+        text = re.sub(r'(\d+)\s*°\s*F\b', r'\1 градусов Фаренгейта', text)
+        text = re.sub(r'(\d+)\s*°', r'\1 градусов', text)
+        text = re.sub(r'(\d+)\s*C\b', r'\1 градусов', text)
+        text = re.sub(r'(\d+)\s*F\b', r'\1 градусов Фаренгейта', text)
+        text = text.replace('~', ' примерно ')
+        text = text.replace('≈', ' приблизительно ')
+        text = text.replace('№', 'номер ')
+        text = text.replace('&', ' и ')
+        text = text.replace('+', ' плюс ').replace('=', ' равно ')
+        # Десятичные: 4.0 → четыре точка ноль
+        def _decimal_repl(m):
+            left = num_to_words(int(m.group(1))) if m.group(1).isdigit() else m.group(1)
+            right = num_to_words(int(m.group(2))) if m.group(2).isdigit() else m.group(2)
+            return f'{left} точка {right}'
+        text = re.sub(r'(\d+)\.(\d+)', _decimal_repl, text)
+        
+        # ── УДАЛИТЬ НЕПРОИЗНОСИМОЕ ──
+        text = re.sub(r'["\'«»„“]', '', text)       # кавычки
+        text = re.sub(r'[*#@^]', '', text)            # звёздочки/хештеги
+        text = re.sub(r'[«»]', '', text)              # ёлочки
+        
+        # ── ПАУЗЫ: точка и запятая остаются — Silero делает паузы на них ──
+        # Добавляем паузу после точки если текст слипается
+        text = re.sub(r'\.(?=[а-яёА-ЯЁ])', '. ', text)
+        
+        # ── ШАГ 4: ФИНАЛЬНЫЙ ПРОХОД — цифры, оставшиеся после замены значков ──
+        text = re.sub(r'(?<![#№.\w])\d{4,}(?!\w)', replace_num, text)
+        text = re.sub(r'(?<![#№.\w])\d{2,3}(?!\w)', replace_num, text)
+        text = re.sub(r'(?<![#№.\w])\d(?![\d\w])', replace_num, text)
+        
+        # Убираем лишние пробелы
+        text = re.sub(r'\s{2,}', ' ', text)
+        
+        return text
+
+    @staticmethod
     def _clean_for_tts(text: str) -> str:
         """Удалить из текста markdown и эмодзи для чистого голосового произношения."""
         import re
@@ -299,27 +400,29 @@ class TextToSpeech:
         # Emoji: strip all Unicode emoji and emoticons
         text = re.sub(r'[\U0001F300-\U0001F9FF\u2600-\u27BF\u2B50\u2700-\u27BF\uFE00-\uFE0F\u200D\u20D0-\u20FF\uD83C-\uDBFF\uDC00-\uDFFF]+', '', text)
         # ASCII emoticons that edge-tts reads as characters (e.g. "двоеточие скобка")
-        text = re.sub(r'\s?[:;][\-]?[()DPpd/\dOo]', '', text)
+        text = re.sub(r'\s?[:;][\-]?[()DPpdOo]', '', text)
         # HTML tags
         text = re.sub(r'<[^>]+>', '', text)
         # Collapse multiple newlines
         text = re.sub(r'\n{3,}', '\n\n', text)
 
-        # Удаляем блоки кода
+        # Удаляем блоки кода в ``` (тройные кавычки) — всё что внутри считается кодом
         text = re.sub(r'```[\s\S]*?```', '', text)
 
-        # Удаляем строки без русских букв (код, команды, English-only)
+        # Фильтруем строки: пропускаем только с отступом (код) или без русских букв
         lines = text.split('\n')
         russian_lines = []
         for line in lines:
             stripped = line.strip()
-            # Пропускаем строки где нет русских букв и они не являются разделителями
+            # Пропускаем строки с отступом — это код
+            if line[0:1] in (' ', '\t'):
+                continue
+            # Оставляем строки с русскими буквами
             if re.search(r'[а-яёА-ЯЁ]', stripped):
                 russian_lines.append(stripped)
-            elif stripped and not re.search(r'[a-zA-Z]', stripped):
-                # Строки без латиницы (только знаки препинания/цифры/эмодзи)
-                if re.search(r'[.!?]', stripped):
-                    russian_lines.append(stripped)
+            # Или строки без латиницы но со знаками препинания
+            elif stripped and not re.search(r'[a-zA-Z]', stripped) and re.search(r'[.!?]', stripped):
+                russian_lines.append(stripped)
         text = '\n'.join(russian_lines)
 
         # Удаляем URL
@@ -343,7 +446,10 @@ class TextToSpeech:
         Возвращает путь к файлу (временному или указанному).
         """
         original_len = len(text)
+        original_len = len(text)
+        # Чистка ДО нормализации: удаляем код пока он не испорчен конвертацией
         text = self._clean_for_tts(text)
+        text = self._normalize_for_tts(text)
         if len(text) < original_len:
             print(f"[TTS] _clean_for_tts: {original_len} → {len(text)} символов (удалено {original_len - len(text)})")
         if self.engine == "openai_tts":
@@ -554,7 +660,7 @@ class TextToSpeech:
             )
 
         sample_rate = 48000
-        MAX_SILERO_CHUNK = 200  # chars per chunk — консервативный предел
+        MAX_SILERO_CHUNK = 150  # chars per chunk — ультра-консервативный предел
 
         def _synthesize_chunk(chunk_text: str):
             chunk_audio = self._silero_model.apply_tts(
@@ -589,18 +695,27 @@ class TextToSpeech:
 
             print(f"[Silero] Всего {len(text)} символов → {len(chunks)} чанков")
 
-            # Синтез каждого чанка + пауза 0.3с между ними
+            # Синтез каждого чанка + пауза 0.35с между ними
             audio_parts = []
-            silence_samples = int(sample_rate * 0.3)
+            silence_samples = int(sample_rate * 0.35)
             for i, chunk in enumerate(chunks):
                 print(f"[Silero]   Чанк {i+1}/{len(chunks)}: {len(chunk)} символов → ", end="", flush=True)
-                part = _synthesize_chunk(chunk)
-                duration = part.shape[0] / sample_rate
-                print(f"{duration:.1f}с")
-                audio_parts.append(part)
-                if i < len(chunks) - 1:
-                    audio_parts.append(torch.zeros(silence_samples, dtype=part.dtype))
+                try:
+                    part = _synthesize_chunk(chunk)
+                    if part is None or part.shape[0] == 0:
+                        print(f"ПУСТОЙ (пропущен)")
+                        continue
+                    duration = part.shape[0] / sample_rate
+                    print(f"{duration:.1f}с")
+                    audio_parts.append(part)
+                    if i < len(chunks) - 1:
+                        audio_parts.append(torch.zeros(silence_samples, dtype=part.dtype))
+                except Exception as e:
+                    print(f"ОШИБКА: {e}")
+                    continue
 
+            if not audio_parts:
+                raise RuntimeError("Silero: все чанки упали. Текст не может быть синтезирован.")
             audio = torch.cat(audio_parts, dim=0)
             total_duration = audio.shape[0] / sample_rate
             print(f"[Silero] Итого: {total_duration:.1f}с аудио")

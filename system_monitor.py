@@ -151,6 +151,41 @@ class SystemMonitor:
         
         return health
 
+    @staticmethod
+    def get_idle_seconds() -> float:
+        """
+        Возвращает время бездействия пользователя в секундах (Windows).
+        -1 если платформа не поддерживается.
+        """
+        if sys.platform != "win32":
+            return -1
+        try:
+            import ctypes
+            from ctypes import wintypes
+            
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            
+            class LASTINPUTINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.UINT),
+                    ("dwTime", wintypes.DWORD),
+                ]
+            
+            lii = LASTINPUTINFO()
+            lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+            
+            if not user32.GetLastInputInfo(ctypes.byref(lii)):
+                return -1
+            
+            tick_count = kernel32.GetTickCount()
+            if tick_count < lii.dwTime:
+                tick_count += 2**32
+            
+            return (tick_count - lii.dwTime) / 1000.0
+        except Exception:
+            return -1
+
 
 # ============================================================
 # 3. ТЕСТ

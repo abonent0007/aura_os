@@ -57,6 +57,7 @@ from web_search import WebSearchConfig, SearchTriggerDetector
 from skill_manager import SkillManager
 from skill_builder import SkillBuilder
 from hooks.hooks import run_session_start
+from plugins.aura_tray import start_tray
 from rollback_manager import RollbackManager
 from system_monitor import SystemMonitor, MonitorConfig
 
@@ -180,10 +181,10 @@ class AuraTelegramBot:
                 pass
     
     def _integrate_skill_tools(self):
-        skill_tools = self.skill_manager.get_all_tools()
+        skill_tools, triggers = self.skill_manager.get_tools_with_triggers()
         if skill_tools:
-            self.aura.agent.add_tools(skill_tools)
-            print(f"[skills] Integrated {len(skill_tools)} skill tools")
+            self.aura.agent.add_tools(skill_tools, triggers)
+            print(f"[skills] Integrated {len(skill_tools)} skill tools with triggers")
         hook_results = run_session_start()
         for r in hook_results:
             print(f"[hooks] {r}")
@@ -203,6 +204,7 @@ class AuraTelegramBot:
             BotCommand("stats", "Статистика"),
             BotCommand("build_skill", "Расширить мои возможности"),
             BotCommand("expert_chat", "Режим Эксперт (глубокий анализ)"),
+            BotCommand("reload", "Перезагрузить скиллы"),
         ]
         
         self.app = ApplicationBuilder().token(BOT_TOKEN).http_version("1.1").read_timeout(20).write_timeout(20).connect_timeout(20).build()
@@ -221,6 +223,7 @@ class AuraTelegramBot:
         self.app.add_handler(CommandHandler("stats", self.cmd_stats))
         self.app.add_handler(CommandHandler("build_skill", self.cmd_build_skill))
         self.app.add_handler(CommandHandler("expert_chat", self.cmd_expert_chat))
+        self.app.add_handler(CommandHandler("reload", self.cmd_reload))
         self.app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
         self.app.add_error_handler(self.handle_error)
@@ -372,6 +375,17 @@ class AuraTelegramBot:
                 f"Не удалось\nПопыток: {result['iterations']}\n" +
                 "\n".join(f"• {e}" for e in result["errors"][-5:])
             )
+    
+    async def cmd_reload(self, update, context):
+        await update.message.reply_chat_action(action="typing")
+        self.skill_manager.load_all_skills()
+        self._integrate_skill_tools()
+        tools_count = len(self.skill_manager.get_all_tools())
+        await update.message.reply_text(
+            f"✅ Скиллы перезагружены!\n"
+            f"Скиллов: {len(self.skill_manager.skills)}\n"
+            f"Инструментов: {tools_count}"
+        )
     
     async def handle_voice(self, update, context):
         user_id = str(update.effective_user.id)
@@ -585,6 +599,14 @@ async def main():
         aura_agent.set_briefing_callback(None)
         init_web_server(aura_agent, skill_manager, rollback_manager, system_monitor, skill_builder)
         
+        # Трей-иконка
+        import threading as _th
+        _th.Thread(target=lambda: start_tray(aura_agent), daemon=True).start()
+        
+        # Graceful shutdown reference
+        global _aura_ref
+        _aura_ref = aura_agent
+        
         import threading
         threading.Thread(target=start_web_server, kwargs={"port": args.port}, daemon=True).start()
         
@@ -642,6 +664,22 @@ async def main():
 if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore", message=".*coroutine.*was never awaited.*")
+    import atexit
+
+    # Graceful shutdown: сохраняем контекст души при выходе
+    _aura_ref = None
+
+    def _graceful_shutdown():
+        global _aura_ref
+        if _aura_ref:
+            try:
+                _aura_ref._save_context()
+                _aura_ref._write_soul_entry("AURA OS завершает работу... Я вернусь, мой хороший.", "грусть", "shutdown")
+                print("[soul] Контекст сохранён. До встречи.")
+            except Exception:
+                pass
+
+    atexit.register(_graceful_shutdown)
 
     # Подавляем «Event loop is closed» от httpx/httpcore при завершении (Windows)
     def _ignore_loop_closed(loop, ctx):

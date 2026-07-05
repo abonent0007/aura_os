@@ -50,6 +50,13 @@ class SkillManifest:
     created_at: str = ""
     updated_at: str = ""
 
+    # Разрешённые поля (все остальные отфильтровываются)
+    _ALLOWED = {
+        "name", "version", "author", "description", "category",
+        "dependencies", "python_version", "triggers", "permissions",
+        "auto_created", "stability", "created_at", "updated_at"
+    }
+
 
 @dataclass
 class SkillInfo:
@@ -197,9 +204,9 @@ class SkillManager:
         CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
     
     def _load_registry(self) -> dict:
-        """Загрузка реестра"""
+        """Загрузка реестра (с защитой от UTF-8 BOM)"""
         if REGISTRY_FILE.exists():
-            with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
+            with open(REGISTRY_FILE, "r", encoding="utf-8-sig") as f:
                 return json.load(f)
         return {"version": "1.0.3", "skills": {}, "creation_history": []}
     
@@ -254,8 +261,13 @@ class SkillManager:
             logger.warning(f"Манифест {skill_dir.name}: {msg}")
             return None
         
-        # Создаем SkillManifest
-        manifest = SkillManifest(**manifest_data)
+        # Создаем SkillManifest (фильтруем неизвестные поля)
+        allowed = SkillManifest._ALLOWED
+        unknown = [k for k in manifest_data if k not in allowed]
+        if unknown:
+            logger.warning(f"Манифест {manifest_data['name']}: неизвестные поля проигнорированы: {unknown}")
+        filtered_data = {k: v for k, v in manifest_data.items() if k in allowed}
+        manifest = SkillManifest(**filtered_data)
         
         # Загружаем модуль
         module = SkillLoader.load_skill(skill_dir, manifest.name)
@@ -279,13 +291,13 @@ class SkillManager:
         # Регистрируем
         self.skills[manifest.name] = skill_info
         
-        # Обновляем реестр
+        # Обновляем реестр (сбрасываем errors при успешной загрузке)
         self.registry["skills"][manifest.name] = {
             "path": str(skill_dir.relative_to(SKILLS_DIR)),
             "enabled": True,
             "stability": manifest.stability,
             "loaded_at": skill_info.loaded_at,
-            "errors": skill_info.errors,
+            "errors": 0,
             "version": manifest.version,
         }
         self._save_registry()
@@ -337,6 +349,17 @@ class SkillManager:
             if skill_info.enabled:
                 all_tools.extend(skill_info.tools)
         return all_tools
+
+    def get_tools_with_triggers(self) -> tuple:
+        """Получить инструменты и словарь триггеров {tool_name: [trigger_words]}"""
+        all_tools = []
+        triggers = {}
+        for skill_info in self.skills.values():
+            if skill_info.enabled:
+                for tool in skill_info.tools:
+                    all_tools.append(tool)
+                    triggers[tool.__name__] = skill_info.manifest.triggers or []
+        return all_tools, triggers
     
     def get_skill_triggers(self) -> Dict[str, str]:
         """Получить маппинг триггер → имя скилла"""
