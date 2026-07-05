@@ -24,31 +24,19 @@ class AgentResponse:
 
 
 class Agent:
-    """
-    Агент с поддержкой function calling (инструменты) и авто-ротацией API-ключей.
-    Совместим с autogen.beta.Agent API.
-    """
-
-    def __init__(
-        self,
-        name: str = "Agent",
-        config: OpenAIConfig = None,
-        tools: List[Callable] = None,
-        system_message: str = "",
-        api_keys: list = None
-    ):
+    def __init__(self, name="Agent", config=None, tools=None, system_message="", api_keys=None):
         self.name = name
         self.config = config or OpenAIConfig()
         self.tools = tools or []
         self.system_message = system_message
         self._tool_map = {f.__name__: f for f in self.tools}
-
-        # Ротация ключей: основной + резервные
+        self._core_tools = set()       # всегда отправляются
+        self._trigger_map = {}         # tool_name → [trigger_words]
+        self._tool_cache = {}          # tool_name → openai_tool_def (кеш)
         self._api_keys = api_keys or [self.config.api_key]
         self._current_key_idx = 0
-        self._key_health = {}  # key → {'failures': int, 'last_fail': timestamp}
-        self._trace_callback = None  # (step_type, tool_name, args, result, thought, latency, success)
-
+        self._key_health = {}
+        self._trace_callback = None
         self._init_client()
 
     def _init_client(self):
@@ -112,9 +100,26 @@ class Agent:
         """
         messages = self._build_messages(text, stream, context, compressed_history)
 
-        openai_tools = None
+        # ── УМНАЯ ФИЛЬТРАЦИЯ ИНСТРУМЕНТОВ ──
+        openai_tools = []
         if self.tools:
-            openai_tools = [function_to_openai_tool(f) for f in self.tools]
+            # Кешируем tool definitions (первый вызов — строим, потом из кеша)
+            if not self._tool_cache:
+                self._tool_cache = {f.__name__: function_to_openai_tool(f) for f in self.tools}
+            # Обновляем кеш для новых инструментов
+            for f in self.tools:
+                if f.__name__ not in self._tool_cache:
+                    self._tool_cache[f.__name__] = function_to_openai_tool(f)
+
+            txt_lower = text.lower()
+            _HI = ["привет", "здравствуй", "как дела", "спокойной ночи", "доброе утро", "добрый вечер", "спасибо", "ок", "ага", "да", "нет"]
+            if len(text) < 50 and any(text.lower().startswith(p) for p in _HI):
+                openai_tools = []
+            else:
+                openai_tools = [self._tool_cache[f.__name__] for f in self.tools
+                    if f.__name__ in self._core_tools or any(w in txt_lower for w in self._trigger_map.get(f.__name__, []))]
+                if not openai_tools:
+                    openai_tools = list(self._tool_cache.values())  # fallback: все
 
         # ReAct: максимум 30 циклов Thought→Action→Observation
         for cycle in range(30):
@@ -128,6 +133,13 @@ class Agent:
                 kwargs["tools"] = openai_tools
                 kwargs["tool_choice"] = "auto"
 
+            # Сигнал трею: Аура думает...
+            try:
+                from plugins.aura_tray import get_tray
+                tray = get_tray()
+                if tray: tray.set_status("thinking")
+            except Exception: pass
+
             try:
                 t0 = __import__('time').time()
                 response = await self.client.chat.completions.create(**kwargs)
@@ -135,6 +147,12 @@ class Agent:
                 if self._trace_callback:
                     self._trace_callback("inference", None, None, None,
                                         response.choices[0].message.content, latency, True)
+                # Сигнал трею: DeepSeek ответил — онлайн
+                try:
+                    from plugins.aura_tray import get_tray
+                    tray = get_tray()
+                    if tray: tray.set_status("online")
+                except Exception: pass
             except openai.APIStatusError as e:
                 if self._trace_callback:
                     self._trace_callback("error", None, None, str(e), None, 0, False)
@@ -143,6 +161,12 @@ class Agent:
                     self._mark_key_failure()
                     if self._rotate_key():
                         continue
+                # Сигнал трею: потеря связи
+                try:
+                    from plugins.aura_tray import get_tray
+                    tray = get_tray()
+                    if tray: tray.set_status("offline")
+                except Exception: pass
                 return AgentResponse(content=f"API error {e.status_code}: {e.message}")
             except Exception as e:
                 if self._trace_callback:
@@ -157,14 +181,22 @@ class Agent:
 
             # Action: инструменты
             if msg.tool_calls and self.tools:
+                # Компактный формат: аргументы урезаны, кроме файловых операций
+                def _compact_args(tc):
+                    fn = tc.function.name
+                    args = tc.function.arguments
+                    if fn in ("edit_skill_file", "project_write"):
+                        return args
+                    return args[:200] if len(args) > 200 else args
+
                 assistant_msg = {
                     "role": "assistant",
-                    "content": thought,
+                    "content": thought[:500] if thought else "",
                     "tool_calls": [
                         {
                             "id": tc.id,
                             "type": "function",
-                            "function": {"name": tc.function.name, "arguments": tc.function.arguments}
+                            "function": {"name": tc.function.name, "arguments": _compact_args(tc)}
                         }
                         for tc in msg.tool_calls
                     ]
@@ -197,7 +229,7 @@ class Agent:
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tid,
-                            "content": result[:8000]
+                            "content": result[:2000]
                         })
                         if self._trace_callback:
                             self._trace_callback("tool_call", tid[:8], None, result, None, 0, success)
@@ -227,7 +259,7 @@ class Agent:
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": tool_result[:8000]
+                            "content": tool_result[:2000]
                         })
 
                 # Если только один инструмент и он вернул простой ответ — можем завершить
@@ -243,45 +275,55 @@ class Agent:
 
     def _build_messages(self, text: str, stream: MemoryStream = None, context: str = "", compressed_history: str = "") -> list:
         """
-        Оптимизирована экономия токенов:
-        1. SYSTEM_PROMPT — первый, статический → кешируется DeepSeek (cache_control: ephemeral)
-        2. Сжатая история (конспект старых диалогов от компрессора)
-        3. Динамический контекст (факты/напоминания) — отдельно, короткий
-        4. История диалога — последние 30 сообщений (sliding window)
-        5. Сообщение пользователя
+        Сверх-компактный контекст:
+        1. SYSTEM_PROMPT — кешируется DeepSeek
+        2. Контекст + сжатая история — склеены
+        3. История — последние 6 сообщений (3 обмена)
+        4. Сообщение пользователя
         """
         messages = []
 
-        # 1. Статический системный промпт — DeepSeek кеширует автоматически
+        # 1. Статический системный промпт
         if self.system_message:
-            messages.append({
-                "role": "system",
-                "content": self.system_message
-            })
+            messages.append({"role": "system", "content": self.system_message})
 
-        # 2. Сжатая история (конспект от компрессора)
+        # 2. Контекст + сжатая история — склеиваем в одно сообщение
+        extra = []
         if compressed_history and compressed_history.strip():
-            messages.append({
-                "role": "system",
-                "content": f"[Краткая история диалога]\n{compressed_history}"
-            })
-
-        # 3. Динамический контекст — короткий, меняется
+            extra.append(compressed_history)
         if context and context.strip():
-            messages.append({"role": "system", "content": f"[Текущий контекст]\n{context}"})
+            extra.append(context)
+        if extra:
+            messages.append({"role": "system", "content": "\n".join(extra)})
 
-        # 4. История диалога — sliding window 30 сообщений
+        # 3. История — последние 6 сообщений (3 вопроса + 3 ответа)
         if stream and stream.history._messages:
-            for m in stream.history._messages[-30:]:
+            for m in stream.history._messages[-6:]:
+                # Фильтруем: пропускаем большие tool-результаты
+                if m.get("role") == "tool" and len(m.get("content", "")) > 500:
+                    m = dict(m)
+                    m["content"] = m["content"][:500] + "..."
                 messages.append(m)
 
-        # 5. Сообщение пользователя
+        # 4. Сообщение пользователя
         messages.append({"role": "user", "content": text})
 
         return messages
 
-    def add_tools(self, new_tools: List[Callable]):
-        """Добавить инструменты к агенту (для интеграции скиллов)."""
-        self.tools.extend(new_tools)
+    def set_core_tools(self, tool_names: list):
+        """Отметить инструменты как ядерные (отправляются всегда)."""
+        self._core_tools = set(tool_names)
+
+    def add_tools(self, new_tools: List[Callable], triggers: dict = None):
+        """Добавить инструменты с триггерными словами (опционально)."""
+        existing = set(self._tool_map.keys())
         for f in new_tools:
+            if f.__name__ in existing:
+                print(f"[tools] SKIP duplicate: {f.__name__}")
+                continue
+            f._from_skill = True  # маркировка: инструмент от скилла
+            self.tools.append(f)
             self._tool_map[f.__name__] = f
+            existing.add(f.__name__)
+        if triggers:
+            self._trigger_map.update(triggers)
