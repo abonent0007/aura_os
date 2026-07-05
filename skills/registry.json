@@ -1,0 +1,345 @@
+{
+  "version": "1.0.3",
+  "updated_at": "2026-06-28T16:21:38.231472",
+  "skills": {
+    "calendar_skill": {
+      "path": "builtin\\calendar_skill",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "2.0.0"
+    },
+    "web_search_skill": {
+      "path": "builtin\\web_search_skill",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.606468",
+      "errors": 0,
+      "version": "2.0.1"
+    },
+    "content-sanitizer": {
+      "path": "builtin\\content-sanitizer",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "persona-extractor": {
+      "path": "builtin\\persona-extractor",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.590845",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "session-analyzer": {
+      "path": "builtin\\session-analyzer",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.590845",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "url-content-fetcher": {
+      "path": "builtin\\url-content-fetcher",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-16T09:00:47.451675",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "moex_stock_tracker": {
+      "path": "custom\\moex_stock_tracker",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:38.215846",
+      "errors": 0,
+      "version": "3.0.0"
+    },
+    "moex-stock-tracker": {
+      "path": "custom\\moex-stock-tracker",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-05-19T16:09:59.898874",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "kazan_direction_trains": {
+      "path": "custom\\kazan_direction_trains",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:38.215846",
+      "errors": 0,
+      "version": "1.1.0"
+    },
+    "codebase-mapper": {
+      "path": "builtin\\codebase-mapper",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "rss-news-aggregator": {
+      "path": "builtin\\rss-news-aggregator",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.590845",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "weather_skill": {
+      "path": "builtin\\weather_skill",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.606468",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "initiative-agent": {
+      "path": "builtin\\initiative-agent",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "2.0.0"
+    },
+    "auras-heart": {
+      "path": "builtin\\auras-heart",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.559595",
+      "errors": 0,
+      "version": "1.0.1"
+    },
+    "daily-bridge": {
+      "path": "builtin\\daily-bridge",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-whisper": {
+      "path": "builtin\\auras-whisper",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-care": {
+      "path": "builtin\\auras-care",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.559595",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "api-finder": {
+      "path": "custom\\api-finder",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.622098",
+      "errors": 0,
+      "version": "7.0.0"
+    },
+    "radio_browser": {
+      "path": "custom\\radio_browser",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-12T16:07:57.285659",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "background-music": {
+      "path": "custom\\background-music",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-12T14:20:38.395551",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "sms_sender": {
+      "path": "custom\\sms_sender",
+      "enabled": false,
+      "stability": "stable",
+      "loaded_at": "2026-06-27T15:07:18.562868",
+      "errors": 0,
+      "version": "1.1.0"
+    },
+    "radio": {
+      "path": "builtin\\radio",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.590845",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-logic": {
+      "path": "builtin\\auras-logic",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.559595",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "auras-me-time": {
+      "path": "builtin\\auras-me-time",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.559595",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "vibe-coach": {
+      "path": "builtin\\vibe-coach",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.606468",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "osint_key_hunter": {
+      "path": "custom\\osint_key_hunter",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:38.215846",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "engineering-mindset": {
+      "path": "builtin\\engineering-mindset",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "2.0.0"
+    },
+    "gh_key_hunter": {
+      "path": "builtin\\gh_key_hunter",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "1.0.1"
+    },
+    "browser-automation": {
+      "path": "custom\\browser-automation",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.747095",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "freelance-manager": {
+      "path": "custom\\freelance-manager",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.747095",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "infographic-generator": {
+      "path": "custom\\infographic-generator",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:38.215846",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "project_manager": {
+      "path": "builtin\\project_manager",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.590845",
+      "errors": 0,
+      "version": "2.0.0"
+    },
+    "astrologer": {
+      "path": "custom\\astrologer",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.622098",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "token_counter": {
+      "path": "custom\\token_counter",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:38.231472",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "synastry": {
+      "path": "custom\\synastry",
+      "enabled": true,
+      "stability": "beta",
+      "loaded_at": "2026-06-28T16:21:38.215846",
+      "errors": 0,
+      "version": "1.1.0"
+    },
+    "aura-senses": {
+      "path": "builtin\\aura-senses",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.559595",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "test-runner": {
+      "path": "custom\\test-runner",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:38.231472",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "transit-watcher": {
+      "path": "custom\\transit-watcher",
+      "enabled": true,
+      "stability": "fresh",
+      "loaded_at": "2026-06-28T16:21:38.231472",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "aura-kitchen": {
+      "path": "custom\\aura-kitchen",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.622098",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "car": {
+      "path": "custom\\car",
+      "enabled": true,
+      "stability": "stable",
+      "loaded_at": "2026-06-28T16:21:37.747095",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "idea-refine": {
+      "path": "builtin\\idea-refine",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:37.575222",
+      "errors": 0,
+      "version": "1.0.0"
+    },
+    "micro-product": {
+      "path": "custom\\micro-product",
+      "enabled": true,
+      "stability": "testing",
+      "loaded_at": "2026-06-28T16:21:38.215846",
+      "errors": 0,
+      "version": "1.0.0"
+    }
+  },
+  "creation_history": [
+    "2026-05-18: РРјРїРѕСЂС‚РёСЂРѕРІР°РЅС‹ 4 СЃРєРёР»Р»Р° РёР· agent-workspace-creator (OpenClaw)"
+  ]
+}
