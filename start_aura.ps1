@@ -46,5 +46,5 @@ if ($all.Count -gt 0) {
     Start-Sleep -Seconds 3
 }
 
-Start-Process -FilePath $py -ArgumentList 'main.py', '--web' -WorkingDirectory $root -WindowStyle Hidden
+Start-Process -FilePath $py -ArgumentList 'main.py', '--all' -WorkingDirectory $root -WindowStyle Hidden
 Write-Host '[aura] Запущено. Ядро поднимется за ~30-60 сек, окна аватара — следом.'

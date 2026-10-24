@@ -263,7 +263,20 @@ class AuraTelegramBot:
             BotCommand("reload", "Перезагрузить скиллы"),
         ]
         
-        self.app = ApplicationBuilder().token(BOT_TOKEN).http_version("1.1").read_timeout(20).write_timeout(20).connect_timeout(20).build()
+        # Telegram через релей (Cloudflare Worker), если задан TELEGRAM_BASE_URL.
+        # Секретный путь хранится в .env, а не в config.json (репозиторий публичный).
+        _tg_cfg = (CONFIG.get("integrations", {}) or {}).get("telegram", {}) or {}
+        _base_url = os.getenv("TELEGRAM_BASE_URL") or _tg_cfg.get("base_url", "")
+        _base_file_url = os.getenv("TELEGRAM_BASE_FILE_URL") or _tg_cfg.get("base_file_url", "")
+        _builder = (ApplicationBuilder().token(BOT_TOKEN)
+                    .http_version("1.1")
+                    .read_timeout(60).write_timeout(60).connect_timeout(20)
+                    .get_updates_read_timeout(60))
+        if _base_url:
+            _builder = _builder.base_url(_base_url)
+        if _base_file_url:
+            _builder = _builder.base_file_url(_base_file_url)
+        self.app = _builder.build()
         await self.app.bot.set_my_commands(commands)
         
         self.app.add_handler(CommandHandler("start", self.cmd_start))

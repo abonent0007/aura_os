@@ -1,4 +1,17 @@
-# AURA OS v4.6.0
+# AURA OS v4.6.1
+
+## Changelog v4.6.1 — Telegram через Cloudflare-релей
+
+### Новое
+- **Telegram снова работает** при заблокированном API: исходящие и long polling идут через Cloudflare Worker (`aura-tg-relay`), который форвардит запросы в `api.telegram.org`.
+- **Aura** читает адрес релея из `.env` (`TELEGRAM_BASE_URL`, `TELEGRAM_BASE_FILE_URL`) — секретный путь не попадает в публичный репозиторий и `config.json`.
+- **PTB**: `read_timeout=60`, `get_updates_read_timeout=60` — запас на задержку релея.
+- **Лаунчер** `start_aura.ps1` теперь запускает `main.py --all` (веб + трей + Telegram).
+
+### Проверено
+- `getMe` через релей — `ok=True` (@auramaybot).
+- `getUpdates(timeout=10)` через релей — `ok=True` (long polling держится).
+- Бот в Aura опрашивает Telegram (409 Conflict при внешнем getUpdates — признак живого поллера).
 
 ## Changelog v4.6.0 — Единый диалог на все окна
 
