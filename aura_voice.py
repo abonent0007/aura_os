@@ -332,9 +332,49 @@ class TextToSpeech:
     def __init__(self, engine: str = "edge_tts", voice: str = "ru-RU-SvetlanaNeural"):
         self.engine = engine
         self.voice = voice
-        
+        self.gain_db = float(os.getenv("TTS_GAIN_DB", "6.0"))
+        self.proxy = os.getenv("TTS_PROXY") or None
+        try:
+            from config_manager import get as cfg_get
+            self.gain_db = float(os.getenv(
+                "TTS_GAIN_DB", cfg_get("voice.output.gain_db", self.gain_db)))
+            self.proxy = os.getenv(
+                "TTS_PROXY", cfg_get("voice.output.proxy", self.proxy or "")) or None
+        except Exception:
+            pass
+
         if engine == "pyttsx3":
             self._init_pyttsx3()
+
+    def _apply_gain(self, path: str) -> str:
+        """Усиление громкости (+6 дБ = ×2) с лимитером от клиппинга."""
+        gain = getattr(self, "gain_db", 0.0)
+        if not path or not os.path.exists(path) or abs(gain) < 0.1:
+            return path
+        import subprocess
+        ext = Path(path).suffix.lower()
+        codec = {
+            ".mp3": ["-c:a", "libmp3lame", "-q:a", "4"],
+            ".ogg": ["-c:a", "libopus", "-b:a", "48k"],
+        }.get(ext, ["-c:a", "pcm_s16le"])
+        tmp = str(Path(path).with_suffix("")) + "_gain" + ext
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error", "-i", path,
+            "-af", f"volume={gain}dB,alimiter=limit=0.95:level=false",
+            *codec, tmp,
+        ]
+        try:
+            subprocess.run(cmd, check=True, timeout=60, capture_output=True)
+            os.replace(tmp, path)
+            return path
+        except Exception as e:
+            print(f"[TTS] gain пропущен: {e}")
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
+            return path
     
     def _init_pyttsx3(self):
         """Инициализация локального pyttsx3 с женским русским голосом"""
@@ -541,19 +581,29 @@ class TextToSpeech:
         if len(text) < original_len:
             print(f"[TTS] _clean_for_tts: {original_len} → {len(text)} символов (удалено {original_len - len(text)})")
         if self.engine == "openai_tts":
-            return await self._synthesize_openai(text, output_path)
+            path = await self._synthesize_openai(text, output_path)
         elif self.engine == "pyttsx3":
-            return await self._synthesize_pyttsx3(text, output_path)
+            path = await self._synthesize_pyttsx3(text, output_path)
         elif self.engine == "edge_tts":
-            return await self._synthesize_edge(text, output_path)
+            try:
+                path = await self._synthesize_edge(text, output_path)
+            except Exception as e:
+                print(f"[TTS] edge_tts failed ({e}), fallback to silero")
+                try:
+                    from loguru import logger
+                    logger.warning("tts: edge failed ({}), fallback to silero", e)
+                except Exception:
+                    pass
+                path = await self._synthesize_silero(text, output_path)
         elif self.engine == "kokoro":
             raise NotImplementedError("Kokoro TTS engine not yet implemented. Use 'silero' or 'piper' instead.")
         elif self.engine == "piper":
-            return await self._synthesize_piper(text, output_path)
+            path = await self._synthesize_piper(text, output_path)
         elif self.engine == "silero":
-            return await self._synthesize_silero(text, output_path)
+            path = await self._synthesize_silero(text, output_path)
         else:
             raise ValueError(f"Неизвестный движок синтеза: {self.engine}")
+        return self._apply_gain(path)
     
     async def synthesize_to_bytes(self, text: str) -> bytes:
         """Синтез речи в байты (для отправки в Telegram)"""
@@ -646,7 +696,7 @@ class TextToSpeech:
             # Edge TTS limit: ~3000 chars per request. Split at sentence boundaries.
             MAX_CHUNK = 2500
             if len(text) <= MAX_CHUNK:
-                communicate = edge_tts.Communicate(text, voice, connect_timeout=40, receive_timeout=480)
+                communicate = edge_tts.Communicate(text, voice, connect_timeout=40, receive_timeout=480, proxy=self.proxy)
                 await communicate.save(output_path)
                 return output_path
 
@@ -673,7 +723,7 @@ class TextToSpeech:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as cf:
                     chunk_path = cf.name
                 try:
-                    communicate = edge_tts.Communicate(chunk, voice, connect_timeout=40, receive_timeout=480)
+                    communicate = edge_tts.Communicate(chunk, voice, connect_timeout=40, receive_timeout=480, proxy=self.proxy)
                     await communicate.save(chunk_path)
                     segment = AudioSegment.from_file(chunk_path, format="mp3")
                     combined += segment

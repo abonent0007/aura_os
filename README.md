@@ -1,4 +1,10 @@
-# AURA OS v4.11.1
+# AURA OS v4.12.0
+
+## Changelog v4.12.0 — Громкость голоса и edge-tts через прокси
+
+- **Усиление TTS**: `voice.output.gain_db = 6.0` (+6 дБ = ×2 амплитуды) с лимитером `alimiter=limit=0.95:level=false` — без клиппинга. Работает для всех движков.
+- **edge-tts 7.3.1**: синтез заработал через Nova-прокси (`voice.output.proxy`), старая 7.2.8 получала 403. При недоступности — автоматический fallback на Silero.
+- Тесты: 92.
 
 ## Changelog v4.11.1 — STT-логи
 
