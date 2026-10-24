@@ -1,4 +1,4 @@
-# aura_voice.py
+﻿# aura_voice.py
 """
 Голосовой модуль AURA OS.
 - Приём голосовых из Telegram
@@ -73,15 +73,67 @@ VOICE_REQUEST_TRIGGERS = [
 class SpeechToText:
     """
     Распознавание речи.
-    Поддерживает: Vosk (локально), Google Speech (бесплатно), Whisper API.
+    Поддерживает: faster-whisper (локально, CPU), Vosk (локально),
+    Google Speech (бесплатно), Whisper API.
     """
     def __init__(self, engine: str = "vosk"):
         self.engine = engine
-        
+        self.vosk_model = None
+        self.vosk_recognizer = None
+        self._fw_model = None
+
         if engine == "vosk":
             self._init_vosk()
         elif engine == "google":
             self._init_google()
+        elif engine == "faster_whisper":
+            self._init_faster_whisper()
+
+    def _init_faster_whisper(self):
+        """Ленивая настройка: сама модель грузится при первой расшифровке."""
+        self.fw_model_path = os.getenv(
+            "FASTER_WHISPER_MODEL", "models/faster-whisper/small")
+        self.fw_compute = os.getenv("FASTER_WHISPER_COMPUTE", "int8")
+        self.fw_threads = int(os.getenv("FASTER_WHISPER_THREADS", "8"))
+        try:
+            from config_manager import get as cfg_get
+            self.fw_model_path = os.getenv(
+                "FASTER_WHISPER_MODEL",
+                cfg_get("voice.input.model", self.fw_model_path))
+            self.fw_compute = os.getenv(
+                "FASTER_WHISPER_COMPUTE",
+                cfg_get("voice.input.compute_type", self.fw_compute))
+            self.fw_threads = int(os.getenv(
+                "FASTER_WHISPER_THREADS",
+                cfg_get("voice.input.cpu_threads", self.fw_threads)))
+        except Exception:
+            pass
+        print(f"faster-whisper: модель загрузится по требованию ({self.fw_model_path})")
+
+    def _get_fw_model(self):
+        """Загружает модель faster-whisper один раз (потокобезопасно)."""
+        if self._fw_model is None:
+            from faster_whisper import WhisperModel
+            self._fw_model = WhisperModel(
+                self.fw_model_path,
+                device="cpu",
+                compute_type=self.fw_compute,
+                cpu_threads=self.fw_threads,
+            )
+            print(f"faster-whisper загружен: {self.fw_model_path}")
+        return self._fw_model
+
+    def _fw_transcribe_sync(self, file_path: str) -> str:
+        """Синхронная расшифровка (вызывается из потока)."""
+        model = self._get_fw_model()
+        segments, _info = model.transcribe(
+            file_path,
+            language="ru",
+            vad_filter=True,
+            beam_size=1,
+            condition_on_previous_text=False,
+        )
+        return " ".join(s.text.strip() for s in segments).strip()
     
     def _init_google(self):
         try:
@@ -116,12 +168,24 @@ class SpeechToText:
     
     async def transcribe_file(self, file_path: str) -> str:
         """Распознавание аудиофайла → текст (с fallback на Vosk)"""
-        
+
+        if self.engine == "faster_whisper":
+            try:
+                return await asyncio.to_thread(self._fw_transcribe_sync, file_path)
+            except Exception as e:
+                print(f"[STT] faster-whisper failed ({e}), fallback to Vosk")
+                if self.vosk_model is None:
+                    self._init_vosk()
+                if self.vosk_model:
+                    return await self._transcribe_vosk(file_path)
+                return f"Ошибка распознавания: {e}"
         if self.engine == "whisper_api":
             try:
                 return await self._transcribe_whisper_api(file_path)
             except Exception as e:
                 print(f"[STT] Whisper failed ({e}), fallback to Vosk")
+                if self.vosk_model is None:
+                    self._init_vosk()
                 if self.vosk_model:
                     return await self._transcribe_vosk(file_path)
                 return f"Ошибка распознавания: {e}"
@@ -804,7 +868,7 @@ class VoiceMessageHandler:
     
     def __init__(
         self,
-        stt_engine: str = "whisper_api",
+        stt_engine: str = "faster_whisper",
         tts_engine: str = "openai_tts",
         tts_voice: str = "nova"
     ):
@@ -1009,7 +1073,7 @@ async def test_voice_flow():
     """Тест полного цикла: текст → голосовой ответ"""
     
     voice_handler = VoiceMessageHandler(
-        stt_engine="whisper_api",
+        stt_engine="faster_whisper",
         tts_engine="openai_tts",
         tts_voice="nova"  # Женский голос OpenAI
     )

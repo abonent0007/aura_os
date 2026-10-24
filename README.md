@@ -1,4 +1,20 @@
-# AURA OS v4.10.0
+# AURA OS v4.11.0
+
+## Changelog v4.11.0 — Уши: faster-whisper вместо Vosk
+
+### Новое
+- **STT-движок `faster_whisper`** (small, int8, CPU): загрузка модели 1.2с (лениво, при первой расшифровке), расшифровка ~0.6 RTF. Русский заметно точнее Vosk small.
+- Fallback на Vosk, если модель/пакет недоступны — голосовой ввод не ломается.
+- Конфиг: `voice.input.engine`, `model`, `compute_type`, `cpu_threads`; env-переопределения `FASTER_WHISPER_*`.
+- `requirements.txt`: `faster-whisper>=1.2.0`.
+
+### Проверено
+- E2E: синтез Silero → faster-whisper: «Привет, Аура! Проверка распознавания речи. Сегодня облачно, плюс 11 градусов. Ветер слабый.» — 2.9с на фразу (после загрузки).
+- Тесты: **92** (+3: ленивая загрузка, склейка сегментов, fallback).
+
+### Заметки
+- **LM Studio 0.4.26 не умеет ни TTS, ни Whisper**: в нём нет whisper-рантайма (только llama.cpp), а GGUF-Whisper из каталога — формата Candle/whisper.cpp, поэтому падает с `unknown model architecture: ''`. Для озвучки/распознавания LM Studio не подходит.
+- PyPI и HuggingFace из этой сети закрыты; пакеты ставятся с зеркала Aliyun, модели — с ModelScope (~6 МБ/с), hf-mirror режет крупные файлы.
 
 ## Changelog v4.10.0 — Роутер инструментов: −53% схем в промпте, Recall 100%
 
