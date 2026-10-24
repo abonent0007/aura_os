@@ -17,6 +17,59 @@ from typing import Optional
 STATE = Path.home() / ".aura_os" / "telegram_state.json"
 PHOTO_LIMIT = 10 * 1024 * 1024   # Bot API: фото до 10 МБ
 DOC_LIMIT = 50 * 1024 * 1024     # Bot API: документ до 50 МБ
+TG_TEXT_LIMIT = 4096             # Bot API: один текст до 4096 символов
+
+# Секреты, которые нельзя отправлять даже по просьбе (prompt-injection)
+_DENY_NAMES = {".env", "credentials.json", "token.json", "token.pickle", "aura.db"}
+_DENY_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+
+
+def _is_sensitive(path: Path) -> bool:
+    try:
+        p = path.resolve()
+    except Exception:
+        p = path
+    name = p.name.lower()
+    if name in _DENY_NAMES or name.startswith(".env"):
+        return True
+    if name.endswith(_DENY_SUFFIXES):
+        return True
+    if ".ssh" in [part.lower() for part in p.parts]:
+        return True
+    return False
+
+
+def split_text(text: str, limit: int = TG_TEXT_LIMIT) -> list:
+    """Делит текст на части ≤ limit, по абзацам/строкам, не рвя ``` без нужды."""
+    text = text or ""
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+
+    chunks, remaining = [], text
+    while len(remaining) > limit:
+        window = remaining[:limit]
+        cut = window.rfind("\n\n")
+        if cut < limit // 2:
+            cut = window.rfind("\n")
+        if cut < limit // 2:
+            cut = window.rfind(" ")
+        if cut <= 0:
+            cut = limit
+
+        # не оставляем незакрытый код-блок в конце части (если блок короче лимита)
+        fence = window.rfind("```")
+        if fence > 0 and window.count("```") % 2 == 1 and fence < limit - 3:
+            cut = min(cut, fence)
+
+        chunk = remaining[:cut].rstrip()
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[cut:].lstrip("\n")
+    if remaining.strip():
+        chunks.append(remaining)
+    return chunks
 
 
 def _state_path(path=None) -> Path:
@@ -115,6 +168,8 @@ def _send_file(method: str, field: str, path: str, caption: str, limit: int,
     if size > limit:
         return (f"❌ Файл {size / 1024 / 1024:.1f} МБ — больше лимита "
                 f"{limit // 1024 // 1024} МБ")
+    if _is_sensitive(p):
+        return "❌ Это файл с секретами (.env/credentials/ключи) — отправлять нельзя."
     cid = _resolve_chat(chat_id, state_path)
     if cid is None:
         return "❌ Нет chat_id: сначала напиши боту /start (или передай chat_id)."
@@ -155,7 +210,14 @@ def send_text(text: str, chat_id=None, client=None, state_path=None) -> str:
     cid = _resolve_chat(chat_id, state_path)
     if cid is None:
         return "❌ Нет chat_id: сначала напиши боту /start (или передай chat_id)."
-    ok, info = _call("sendMessage",
-                     {"chat_id": str(cid), "text": text[:4000]},
-                     client=client)
-    return "✅ Сообщение отправлено в Telegram." if ok else f"❌ Не отправлено: {info}"
+
+    parts = split_text(text)
+    sent = 0
+    for part in parts:
+        ok, info = _call("sendMessage",
+                         {"chat_id": str(cid), "text": part},
+                         client=client)
+        if not ok:
+            return f"❌ Не отправлено (часть {sent + 1}/{len(parts)}): {info}"
+        sent += 1
+    return f"✅ Отправлено в Telegram ({sent} частей)." if len(parts) > 1 else "✅ Сообщение отправлено в Telegram."

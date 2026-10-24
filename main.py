@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 AURA OS v1.0 — Персональный голосовой ассистент
 ================================================
@@ -93,11 +93,12 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
 # Telegram — опциональный импорт (только для режимов bot/all)
 try:
-    from telegram import Update, BotCommand
+    from telegram import (Update, BotCommand, InlineKeyboardMarkup,
+                          InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton)
     from telegram.ext import (
         Application, ApplicationBuilder,
         CommandHandler, MessageHandler, filters, ContextTypes,
-        TypeHandler
+        TypeHandler, CallbackQueryHandler
     )
     from telegram.constants import ParseMode
     HAS_TELEGRAM = True
@@ -105,7 +106,8 @@ except ImportError:
     HAS_TELEGRAM = False
     Update = BotCommand = None
     Application = ApplicationBuilder = CommandHandler = MessageHandler = filters = ContextTypes = None
-    TypeHandler = None
+    TypeHandler = CallbackQueryHandler = None
+    InlineKeyboardMarkup = InlineKeyboardButton = ReplyKeyboardMarkup = KeyboardButton = None
     ParseMode = None
 
 from aura_core import AuraAgent, CONFIG, check_config
@@ -250,9 +252,12 @@ class AuraTelegramBot:
     async def setup(self):
         commands = [
             BotCommand("start", "Познакомиться со мной"),
+            BotCommand("menu", "Меню с кнопками"),
             BotCommand("help", "Что я умею для тебя"),
             BotCommand("voice", "Поговори со мной голосом"),
             BotCommand("text", "Давай текстом"),
+            BotCommand("screen", "Прислать скриншот экрана"),
+            BotCommand("news", "Новости технологий"),
             BotCommand("today", "Что у нас сегодня"),
             BotCommand("week", "Планы на неделю"),
             BotCommand("birthdays", "Дни рождения"),
@@ -297,6 +302,10 @@ class AuraTelegramBot:
         
         self.app.add_handler(CommandHandler("start", self.cmd_start))
         self.app.add_handler(CommandHandler("help", self.cmd_help))
+        self.app.add_handler(CommandHandler("menu", self.cmd_menu))
+        self.app.add_handler(CommandHandler("screen", self.cmd_screen))
+        self.app.add_handler(CommandHandler("news", self.cmd_news))
+        self.app.add_handler(CallbackQueryHandler(self.handle_menu_callback, pattern=r"^m:"))
         self.app.add_handler(CommandHandler("voice", self.cmd_voice_mode))
         self.app.add_handler(CommandHandler("text", self.cmd_text_mode))
         self.app.add_handler(CommandHandler("today", self.cmd_today))
@@ -315,6 +324,151 @@ class AuraTelegramBot:
         self.app.add_error_handler(self.handle_error)
         print("✅ Бот настроен")
     
+    # ── Меню и кнопки ──────────────────────────────────────────
+    def _reply_kb(self):
+        return ReplyKeyboardMarkup(
+            [["🧠 Меню", "👁 Скриншот"], ["📊 Статус", "❓ Помощь"]],
+            resize_keyboard=True,
+        )
+
+    def _menu_markup(self):
+        rows = [
+            [InlineKeyboardButton("👁 Скриншот", callback_data="m:screen"),
+             InlineKeyboardButton("📰 Новости ИИ", callback_data="m:news")],
+            [InlineKeyboardButton("📅 Сегодня", callback_data="m:today"),
+             InlineKeyboardButton("🌤 Погода", callback_data="m:weather")],
+            [InlineKeyboardButton("🧩 Возможности", callback_data="m:features"),
+             InlineKeyboardButton("📊 Статус", callback_data="m:status")],
+            [InlineKeyboardButton("🎤 Голос", callback_data="m:voice"),
+             InlineKeyboardButton("⌨️ Текст", callback_data="m:text")],
+            [InlineKeyboardButton("❓ Помощь", callback_data="m:help")],
+        ]
+        return InlineKeyboardMarkup(rows)
+
+    async def cmd_menu(self, update, context):
+        await update.message.reply_text(
+            "🧠 Меню Aura\nВыбери, что сделать — или просто напиши сообщение.",
+            reply_markup=self._menu_markup(),
+        )
+        await update.message.reply_text(
+            "Быстрые кнопки всегда внизу 👇", reply_markup=self._reply_kb()
+        )
+
+    async def cmd_screen(self, update, context):
+        await self._menu_action("screen", update.message)
+
+    async def cmd_news(self, update, context):
+        await self._menu_action("news", update.message)
+
+    async def _reply_long(self, message, text: str):
+        from telegram_bridge import split_text
+        for part in split_text(text or ""):
+            await message.reply_text(part)
+
+    async def handle_menu_callback(self, update, context):
+        q = update.callback_query
+        await q.answer()  # сразу подтверждаем нажатие
+        data = q.data or ""
+        action = data[2:] if data.startswith("m:") else ""
+        allowed = {"screen", "news", "today", "weather", "features",
+                   "status", "voice", "text", "help"}
+        if action not in allowed:
+            return
+        # кнопки — только для владельца (последний чат, писавший боту)
+        try:
+            from telegram_bridge import last_chat
+            cid = last_chat()
+            if cid is not None and q.message is not None and q.message.chat_id != cid:
+                await q.message.reply_text("Эта кнопка доступна только владельцу.")
+                return
+        except Exception:
+            pass
+        try:
+            from loguru import logger
+            logger.info("telegram menu: {}", action)
+        except Exception:
+            pass
+        if q.message is not None:
+            await self._menu_action(action, q.message)
+
+    def _take_and_send_screenshot(self) -> str:
+        from PIL import ImageGrab
+        from pathlib import Path as _P
+        import datetime as _dt
+        d = _P(os.getenv("TEMP", ".")) / "aura_screenshots"
+        d.mkdir(parents=True, exist_ok=True)
+        p = d / f"shot_{_dt.datetime.now():%Y%m%d_%H%M%S}.png"
+        ImageGrab.grab().save(p, "PNG")
+        from telegram_bridge import send_document
+        return send_document(str(p), "Скриншот")
+
+    async def _menu_action(self, action: str, message):
+        if action == "menu":
+            await message.reply_text("Меню:", reply_markup=self._menu_markup())
+            return
+
+        if action == "screen":
+            res = await asyncio.to_thread(self._take_and_send_screenshot)
+            await message.reply_text(res)
+            return
+
+        if action == "status":
+            tool = None
+            try:
+                tool = self.aura.agent._tool_map.get("system_health")
+            except Exception:
+                pass
+            res = await asyncio.to_thread(tool) if tool else "Статус недоступен."
+            await self._reply_long(message, res)
+            return
+
+        if action == "features":
+            text = (
+                "🧩 Что я умею в Telegram\n"
+                "• 💬 Чат — просто пиши, отвечу голосом или текстом\n"
+                "• 👁 Скриншот — сниму экран и пришлю файлом\n"
+                "• 📰 Новости ИИ — свежее из мира технологий\n"
+                "• 📅 Сегодня — события и напоминания\n"
+                "• 🌤 Погода — прогноз по городу\n"
+                "• 🧠 Память — помню, что мы обсуждали\n"
+                "• 🧩 Скиллы — 40+ навыков: проекты, файлы, музыка, астро\n"
+                "• 🎤 Голос — /voice, текстом — /text\n\n"
+                "Кнопки внизу всегда под рукой."
+            )
+            await message.reply_text(text, reply_markup=self._menu_markup())
+            return
+
+        if action == "help":
+            await message.reply_text(
+                "❓ Я рядом. Команды: /menu, /screen, /news, /voice, /text, "
+                "/today, /week, /weather, /stats.\nИли просто напиши, что нужно.",
+                reply_markup=self._reply_kb(),
+            )
+            return
+
+        if action in ("voice", "text"):
+            chat_id = message.chat_id
+            self.chat_states.setdefault(chat_id, {})
+            self.chat_states[chat_id]["default_mode"] = (
+                ResponseMode.VOICE if action == "voice" else ResponseMode.TEXT
+            )
+            await message.reply_text("🎤 Голосовой режим" if action == "voice" else "⌨️ Текстовый режим")
+            return
+
+        queries = {
+            "news": "Что нового в мире технологий? Коротко, 3 пункта.",
+            "today": "Что у меня сегодня по календарю? Кратко.",
+            "weather": "Какая сегодня погода? Кратко.",
+        }
+        if action in queries and self.aura:
+            await message.reply_chat_action(action="typing")
+            try:
+                response = await self.aura.process(queries[action], "telegram")
+                await self._reply_long(message, response)
+            except Exception as e:
+                await message.reply_text(f"Не получилось: {e}")
+            return
+
     async def cmd_start(self, update, context):
         user = update.effective_user
         chat_id = update.effective_chat.id
@@ -359,23 +513,23 @@ class AuraTelegramBot:
     async def cmd_today(self, update, context):
         await update.message.reply_chat_action(action="typing")
         response = await self.aura.process("Что у меня сегодня?")
-        await update.message.reply_text(response[:4000])
+        await self._reply_long(update.message, response)
     
     async def cmd_week(self, update, context):
         await update.message.reply_chat_action(action="typing")
         response = await self.aura.process("Что у меня на этой неделе?")
-        await update.message.reply_text(response[:4000])
+        await self._reply_long(update.message, response)
     
     async def cmd_birthdays(self, update, context):
         await update.message.reply_chat_action(action="typing")
         response = await self.aura.process("Покажи все дни рождения")
-        await update.message.reply_text(response[:4000])
+        await self._reply_long(update.message, response)
     
     async def cmd_weather(self, update, context):
         city = " ".join(context.args) if context.args else "Москва"
         await update.message.reply_chat_action(action="typing")
         response = await self.aura.process(f"Какая погода в {city}?")
-        await update.message.reply_text(response[:4000])
+        await self._reply_long(update.message, response)
     
     async def cmd_search(self, update, context):
         query = " ".join(context.args)
@@ -385,7 +539,7 @@ class AuraTelegramBot:
         await update.message.reply_chat_action(action="typing")
         await update.message.reply_text(f"🔍 Ищу: \"{query}\"...")
         response = await self.aura.process(f"Найди в интернете: {query}")
-        await update.message.reply_text(response[:4000])
+        await self._reply_long(update.message, response)
     
     async def cmd_memory(self, update, context):
         query = " ".join(context.args)
@@ -394,7 +548,7 @@ class AuraTelegramBot:
             return
         await update.message.reply_chat_action(action="typing")
         response = await self.aura.process(f"Найди в истории: {query}")
-        await update.message.reply_text(response[:4000])
+        await self._reply_long(update.message, response)
     
     async def cmd_stats(self, update, context):
         uptime = datetime.now() - datetime.fromisoformat(self.stats["started_at"])
@@ -431,7 +585,7 @@ class AuraTelegramBot:
         try:
             from plugins.aura_orchestrator.aura_orchestrator import orchestrate
             expert_answer = await orchestrate(query)
-            await update.message.reply_text(expert_answer[:4000])
+            await self._reply_long(update.message, expert_answer)
             self.expert_mode = False  # auto-switch back to Aura
             await update.message.reply_text("[Switched back to Aura] Now I can work with this answer. What shall we do?")
         except Exception as e:
@@ -494,7 +648,13 @@ class AuraTelegramBot:
         user_id = str(update.effective_user.id)
         chat_id = update.effective_chat.id
         text = update.message.text.strip()
-        
+
+        _labels = {"🧠 Меню": "menu", "👁 Скриншот": "screen",
+                   "📊 Статус": "status", "❓ Помощь": "help"}
+        if text in _labels:
+            await self._menu_action(_labels[text], update.message)
+            return
+
         self.stats["text_messages"] += 1
         self.stats["messages_processed"] += 1
         
@@ -514,7 +674,7 @@ class AuraTelegramBot:
                 try:
                     from plugins.aura_orchestrator.aura_orchestrator import orchestrate
                     expert_answer = await orchestrate(text)
-                    await update.message.reply_text(expert_answer[:4000])
+                    await self._reply_long(update.message, expert_answer)
                     self.expert_mode = False
                     await update.message.reply_text("[Back to Aura] Let's continue, my dear.")
                 except Exception as e:
@@ -565,7 +725,7 @@ class AuraTelegramBot:
                     await update.message.reply_voice(voice=voice_file, caption=None)
                 except Exception as tts_error:
                     print(f"⚠️ TTS ошибка: {tts_error}")
-                    await update.message.reply_text(response[:4000])
+                    await self._reply_long(update.message, response)
             else:
                 if len(response) > 4000:
                     for i in range(0, len(response), 4000):

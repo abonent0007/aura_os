@@ -81,6 +81,8 @@ class AutonomousObserver:
         self.fun_idea_interval_h = cfg.get("fun_idea_interval_hours", 2)
         self.thread_interval_h = cfg.get("unfinished_thread_interval_hours", 4)
         self.reminders_enabled = cfg.get("reminders_enabled", True)
+        telegram_cfg = ((config or {}).get("integrations", {}) or {}).get("telegram", {}) or {}
+        self.telegram_proactive = bool(telegram_cfg.get("proactive", True))
         self.broadcast_fn = broadcast_fn  # async fn(event, data) — WS
         self._last_intervention = 0.0
         self._interventions = []  # timestamps за час
@@ -423,6 +425,13 @@ class AutonomousObserver:
                 await self.broadcast_fn("autonomous_message", {"text": message})
         except Exception:
             pass
+        # Проактивно в Telegram (если пользователь уже писал боту)
+        if getattr(self, "telegram_proactive", True):
+            try:
+                from telegram_bridge import send_text
+                await asyncio.to_thread(send_text, message)
+            except Exception:
+                pass
         try:
             if self.aura_agent and hasattr(self.aura_agent, '_write_soul_entry'):
                 self.aura_agent._write_soul_entry(message, "забота", "autonomy")
