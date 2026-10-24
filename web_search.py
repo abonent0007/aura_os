@@ -462,53 +462,239 @@ class WeatherService:
     BASE_URL_3 = "https://api.openweathermap.org/data/3.0/onecall"
     BASE_URL_25 = "https://api.openweathermap.org/data/2.5"
     GEO_URL = "https://api.openweathermap.org/geo/1.0/direct"
+    METNO_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+    NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+
+    # MET Norway symbol_code → русское описание
+    METNO_RU = {
+        "clearsky_day": "ясно", "clearsky_night": "ясно",
+        "fair_day": "малооблачно", "fair_night": "малооблачно",
+        "partlycloudy_day": "переменная облачность",
+        "partlycloudy_night": "переменная облачность",
+        "cloudy": "облачно", "fog": "туман",
+        "lightrain": "небольшой дождь", "lightrainshowers_day": "небольшой дождь",
+        "lightrainshowers_night": "небольшой дождь",
+        "rain": "дождь", "heavyrain": "сильный дождь",
+        "rainshowers_day": "ливень", "rainshowers_night": "ливень",
+        "lightsnow": "небольшой снег", "snow": "снег",
+        "heavysnow": "сильный снег", "snowshowers_day": "снегопад",
+        "sleet": "мокрый снег", "rainandthunder": "гроза с дождём",
+        "lightrainandthunder": "небольшая гроза с дождём",
+    }
+
+    @classmethod
+    def _metno_desc(cls, code: str) -> str:
+        code = (code or "").strip()
+        return cls.METNO_RU.get(code, code.replace("_", " ") or "—")
 
     def __init__(self, config: WebSearchConfig):
         self.config = config
         self.api_key = config.openweathermap_key or os.getenv("OPENWEATHERMAP_API_KEY", "")
         self.default_city = config.default_city
         self.rate_limiter = RateLimiter(config)
+        self._geo_cache = {}
+
+    async def _geocode_nominatim(self, city: str) -> tuple:
+        """Город → (lat, lon) через Nominatim (OpenStreetMap), с кэшем."""
+        if not city:
+            return None, None
+        if city in self._geo_cache:
+            return self._geo_cache[city]
+        try:
+            headers = {"User-Agent": "AURA-OS/4.9 (personal assistant)"}
+            async with httpx.AsyncClient(timeout=8.0, headers=headers) as client:
+                resp = await client.get(
+                    self.NOMINATIM_URL,
+                    params={"q": city, "format": "json", "limit": 1},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            if data:
+                lat = float(data[0]["lat"])
+                lon = float(data[0]["lon"])
+                self._geo_cache[city] = (lat, lon)
+                return lat, lon
+        except Exception:
+            pass
+        return None, None
+
+    async def _get_metno(self, lat: float, lon: float, forecast_type: str,
+                         city: str) -> str:
+        """Погода через MET Norway (без ключа, JSON). None — если не вышло."""
+        try:
+            headers = {"User-Agent": "AURA-OS/4.9 (personal assistant)"}
+            async with httpx.AsyncClient(timeout=8.0, headers=headers) as client:
+                resp = await client.get(self.METNO_URL, params={"lat": lat, "lon": lon})
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            return None
+        series = (data.get("properties") or {}).get("timeseries") or []
+        if not series:
+            return None
+        return self._format_metno(series, city, forecast_type)
+
+    def _format_metno(self, series: list, city: str, forecast_type: str) -> str:
+        def point(ts):
+            details = ((ts.get("data") or {}).get("instant") or {}).get("details") or {}
+            nxt = (ts.get("data") or {}).get("next_1_hours") or {}
+            code = ((nxt.get("summary") or {}).get("symbol_code")
+                    or (((ts.get("data") or {}).get("next_6_hours") or {})
+                        .get("summary", {}) or {}).get("symbol_code") or "")
+            return details, code
+
+        def fmt_time(iso: str) -> str:
+            try:
+                return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%H:%M")
+            except Exception:
+                return iso
+
+        def fmt_point(ts, prefix: str = "") -> str:
+            details, code = point(ts)
+            temp = details.get("air_temperature")
+            wind = details.get("wind_speed")
+            hum = details.get("relative_humidity")
+            parts = []
+            if temp is not None:
+                parts.append(f"{temp:+.0f}°C")
+            if code:
+                parts.append(self._metno_desc(code))
+            if wind is not None:
+                parts.append(f"ветер {wind:.0f} м/с")
+            if hum is not None:
+                parts.append(f"влажность {hum:.0f}%")
+            return f"{prefix}{', '.join(parts)}" if parts else prefix.rstrip(": ")
+
+        now_details, _ = point(series[0])
+        lines = [f"🌤 Погода — {city}"]
+        lines.append(fmt_point(series[0], "Сейчас: "))
+
+        if forecast_type == "today":
+            # ближайшие +6ч и +12ч
+            for hours in (6, 12):
+                target = datetime.now().astimezone() + timedelta(hours=hours)
+                best = min(series, key=lambda ts: abs(
+                    (datetime.fromisoformat(ts["time"].replace("Z", "+00:00")) - target).total_seconds()
+                ))
+                lines.append(fmt_point(best, f"Через {hours} ч: "))
+        elif forecast_type == "tomorrow":
+            tomorrow = (datetime.now() + timedelta(days=1)).date()
+            picks = []
+            for ts in series:
+                try:
+                    dt = datetime.fromisoformat(ts["time"].replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if dt.date() == tomorrow and dt.hour in (9, 15, 21):
+                    picks.append((dt.hour, ts))
+            for hour, ts in picks[:3]:
+                lines.append(fmt_point(ts, f"Завтра {hour:02d}:00: "))
+        elif forecast_type == "week":
+            by_day = {}
+            for ts in series:
+                try:
+                    dt = datetime.fromisoformat(ts["time"].replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if dt.hour == 12:
+                    by_day.setdefault(dt.date(), ts)
+            for day in sorted(by_day)[:7]:
+                ts = by_day[day]
+                lines.append(fmt_point(ts, f"{day.strftime('%d.%m')}: "))
+
+        return "\n".join(lines)
+
+    async def _get_google_ai_weather(self, city: str, forecast_type: str):
+        """Последний резерв: Google AI Mode через Chrome (как умеет Аура)."""
+        helper = r"C:\lib\google-ai.py"
+        try:
+            from config_manager import get as cfg_get
+            helper = cfg_get("google_ai.helper_path", helper)
+        except Exception:
+            pass
+        if not os.path.exists(helper):
+            return None
+        when = {"today": "сегодня", "tomorrow": "завтра", "week": "на неделю"}.get(
+            forecast_type, "сегодня")
+        query = (f"Погода в {city} {when}: температура, ветер, осадки. "
+                 f"Ответь одним коротким абзацем по-русски, без ссылок.")
+        import subprocess
+        import sys as _sys
+
+        exe = _sys.executable or "python"
+        if exe.lower().endswith("pythonw.exe"):
+            exe = exe[:-len("pythonw.exe")] + "python.exe"
+
+        def _run():
+            proc = subprocess.run(
+                [exe, helper, query], capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=60,
+            )
+            return (proc.stdout or "").strip()
+
+        try:
+            out = await asyncio.to_thread(_run)
+            return out or None
+        except Exception:
+            return None
 
     async def get_weather(self, city: str = None, forecast_type: str = "today") -> str:
         city = city or self.default_city
         await self.rate_limiter.wait()
 
-        if not self.api_key:
-            return "OpenWeatherMap API key not configured.\n1. Register at https://openweathermap.org\n2. Get a free API key\n3. Add to .env: OPENWEATHERMAP_API_KEY=..."
-
-        # 2.5 first — free, no geocoding needed, always works
+        # 1) MET.no + Nominatim — без ключа, стабильно доступен
         try:
-            return await self._get_weather_v25(city, forecast_type)
+            lat, lon = await self._geocode_nominatim(city)
+            if lat is not None:
+                text = await self._get_metno(lat, lon, forecast_type, city)
+                if text:
+                    return text
         except Exception:
             pass
 
-        # 3.0 fallback via coordinates
+        # 2) OpenWeatherMap (если ключ и канал доступен)
+        if self.api_key:
+            try:
+                return await self._get_weather_v25(city, forecast_type)
+            except Exception:
+                pass
+            try:
+                lat, lon = await self._geocode(city)
+                if lat:
+                    return await self._get_onecall_v3(lat, lon, forecast_type)
+            except Exception:
+                pass
+
+        # 3) Google AI Mode через Chrome (браузерный резерв)
         try:
-            lat, lon = await self._geocode(city)
-            if lat:
-                return await self._get_onecall_v3(lat, lon, forecast_type)
+            text = await self._get_google_ai_weather(city, forecast_type)
+            if text:
+                return text
         except Exception:
             pass
 
-        return f"Weather unavailable for {city}"
+        return f"Не удалось узнать погоду для {city}: источники недоступны."
 
     async def get_weather_by_coords(self, lat: float, lon: float, forecast_type: str = "today") -> str:
-        """Get weather directly by coordinates (no geocoding needed)."""
+        """Погода по координатам: MET.no (без ключа) → OpenWeatherMap."""
         await self.rate_limiter.wait()
 
-        if not self.api_key:
-            return "OpenWeatherMap API key not configured."
-
         try:
+            text = await self._get_metno(lat, lon, forecast_type, f"{lat:.2f},{lon:.2f}")
+            if text:
+                return text
+        except Exception:
+            pass
+
+        if self.api_key:
             try:
                 return await self._get_onecall_v3(lat, lon, forecast_type)
-            except Exception as e3:
+            except Exception:
                 try:
                     return await self._get_weather_by_coords_v25(lat, lon, forecast_type)
-                except Exception as e25:
-                    return f"Weather API error: 3.0={e3}, 2.5={e25}"
-        except Exception as e:
-            return f"Weather error: {e}"
+                except Exception as e:
+                    return f"Weather API error: {e}"
+        return "Погода недоступна: источники не ответили."
 
     async def _get_weather_by_coords_v25(self, lat: float, lon: float, forecast_type: str) -> str:
         """Fallback to 2.5 API using coordinates."""

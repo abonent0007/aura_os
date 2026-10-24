@@ -1,4 +1,14 @@
-# AURA OS v4.8.0
+# AURA OS v4.9.0
+
+## Changelog v4.9.0 — Погода снова работает
+
+### Новое
+- **WeatherService**: цепочка источников **MET.no** (JSON, без ключа) → **Nominatim** (геокодер) → OpenWeatherMap (если ключ) → **Google AI Mode через Chrome**. OpenWeatherMap и Open-Meteo у провайдера недоступны (read timeout), MET.no и Nominatim отвечают.
+- Русские описания (symbol_code → текст), прогноз на сегодня/завтра/неделю, кэш геокодинга.
+- Погода доступна и в Telegram-меню (кнопка «Погода»).
+
+### Тесты
+- **83 unit-теста** (+4: форматирование MET.no).
 
 ## Changelog v4.8.0 — Telegram: меню, длинные ответы, проактивность
 
