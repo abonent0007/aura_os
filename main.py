@@ -221,14 +221,20 @@ class AuraTelegramBot:
 
     def _send_briefing(self, text: str):
         """Отправляет брифинг в Telegram (вызывается из AuraAgent)."""
-        if self.briefing_chat_id and self.app and self.app.bot:
+        cid = self.briefing_chat_id
+        if cid is None:
+            try:
+                from telegram_bridge import last_chat
+                cid = last_chat()
+            except Exception:
+                cid = None
+        if cid and self.app and self.app.bot:
             import asyncio
             async def _send():
                 try:
-                    await self.app.bot.send_message(
-                        chat_id=self.briefing_chat_id,
-                        text=text[:4000]
-                    )
+                    from telegram_bridge import split_text
+                    for part in split_text(text):
+                        await self.app.bot.send_message(chat_id=cid, text=part)
                 except Exception as e:
                     print(f"[briefing] Failed to send: {e}")
             try:
