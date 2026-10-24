@@ -10,6 +10,9 @@ from autogen.beta.agent import (
     _PSEUDO_TOOL_RE,
     _truncate_result,
     _human_error,
+    _is_read_only,
+    _should_parallel,
+    _parallel_limit,
 )
 from autogen.beta.config import OpenAIConfig
 from autogen.beta import tools as tao
@@ -215,8 +218,8 @@ def test_pseudo_retry_uses_required_and_all_tools():
     assert len(fake.calls) == 2
     first_names = {t["function"]["name"] for t in fake.calls[0]["tools"]}
     second_names = {t["function"]["name"] for t in fake.calls[1]["tools"]}
-    assert first_names == {"echo_tool"}
-    assert second_names == {"echo_tool", "bite_tool"}
+    assert first_names == {"echo_tool", "find_tools"}
+    assert second_names == {"echo_tool", "find_tools", "bite_tool"}
     assert fake.calls[1]["tool_choice"] == "required"
     assert resp.content == "Чистый ответ."
 
@@ -255,3 +258,108 @@ def test_pseudo_sanitized_when_no_retry_possible():
     assert len(fake.calls) == 1
     assert "invoke" not in resp.content.lower()
     assert "Секунду" in resp.content
+
+
+# ── Роутер инструментов и read-only политика ────────────────────────────
+
+def _mk_tool(name, doc):
+    def fn(x: str = "") -> str:
+        return "ok"
+    fn.__name__ = name
+    fn.__doc__ = doc
+    fn._is_tool = True
+    return fn
+
+
+def _tool_names(call):
+    return [t["function"]["name"] for t in call["tools"]]
+
+
+def test_read_only_policy():
+    assert _is_read_only("get_news")
+    assert _is_read_only("search_web_ddgs")
+    assert _is_read_only("desktop_list_windows")
+    assert not _is_read_only("hunter_scan")
+    assert not _is_read_only("type_text")
+    assert not _is_read_only("google_ai")
+    assert not _is_read_only("write_file")
+
+
+def test_should_parallel_policy():
+    ro1 = FakeToolCall("1", "get_news", "{}")
+    ro2 = FakeToolCall("2", "search_web_ddgs", "{}")
+    wr = FakeToolCall("3", "type_text", "{}")
+    unknown = FakeToolCall("4", "mystery_tool", "{}")
+    assert _should_parallel([ro1, ro2]) is True
+    assert _should_parallel([ro1, wr]) is False
+    assert _should_parallel([wr, unknown]) is False
+    assert _should_parallel([ro1]) is False
+    assert _should_parallel([]) is False
+
+
+def test_parallel_limit_clamped(monkeypatch):
+    import autogen.beta.agent as agent_mod
+    monkeypatch.setattr(agent_mod, "_cfg_get", lambda path, default=None: 0)
+    assert _parallel_limit() == 1
+    monkeypatch.setattr(agent_mod, "_cfg_get", lambda path, default=None: -5)
+    assert _parallel_limit() == 1
+    monkeypatch.setattr(agent_mod, "_cfg_get", lambda path, default=None: "мусор")
+    assert _parallel_limit() == 3   # мусор → безопасный дефолт
+
+
+def test_router_limits_selection():
+    tools = [_mk_tool(f"topic_tool_{i:02d}", "инструмент тема номер") for i in range(20)]
+    fake = FakeClient([FakeResponse(content="Ок.")])
+    agent = make_agent(tools)
+    agent.client = fake
+    run_ask(agent, "тема номер")
+    names = _tool_names(fake.calls[0])
+    assert len(names) <= 1 + 14            # core(find_tools) + top_k
+    assert len(names) < len(agent.tools)    # не все 21
+    assert "topic_tool_00" in names         # tie-break по имени
+    assert names == sorted(names)
+
+    fake2 = FakeClient([FakeResponse(content="Ок.")])
+    agent2 = make_agent(tools)
+    agent2.client = fake2
+    run_ask(agent2, "тема номер")
+    assert _tool_names(fake2.calls[0]) == names   # стабильность
+
+
+def test_router_trigger_included():
+    fake = FakeClient([FakeResponse(content="Ок.")])
+    agent = make_agent([echo_tool])
+    agent.set_core_tools(["echo_tool"])
+    agent.add_tools([bite_tool], {"bite_tool": ["кусь"]})
+    agent.client = fake
+    run_ask(agent, "ну кусь же")
+    names = _tool_names(fake.calls[0])
+    assert "bite_tool" in names and "echo_tool" in names
+
+
+def test_router_no_score_returns_core():
+    tools = [_mk_tool("zeta_tool", "совершенно иные слова"),
+             _mk_tool("omega_tool", "ещё другие")]
+    fake = FakeClient([FakeResponse(content="Ок.")])
+    agent = make_agent(tools)
+    agent.client = fake
+    run_ask(agent, "абракадабра")
+    assert _tool_names(fake.calls[0]) == ["find_tools"]
+
+
+def test_find_tools_expands_schema():
+    weather = _mk_tool("get_weather", "погода на завтра")
+    fake = FakeClient([
+        FakeResponse(content="Сейчас поищу.", tool_calls=[
+            FakeToolCall("call_ft", "find_tools", json.dumps({"query": "погода"}))
+        ]),
+        FakeResponse(content="Готово."),
+    ])
+    agent = make_agent([weather])
+    agent.client = fake
+    run_ask(agent, "просто текст")
+    first = _tool_names(fake.calls[0])
+    second = _tool_names(fake.calls[1])
+    assert "get_weather" not in first
+    assert "get_weather" in second
+    assert "find_tools" in second

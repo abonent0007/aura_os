@@ -27,6 +27,73 @@ _PSEUDO_TOOL_RE = re.compile(
     re.I,
 )
 
+# ── Роутинг инструментов: лёгкий IDF-скоринг по name/триггерам/docstring ──
+_STOPWORDS = {
+    "что", "как", "для", "это", "все", "всё", "она", "они", "его", "ему",
+    "мне", "меня", "тебя", "тебе", "если", "или", "уже", "ещё", "еще",
+    "быть", "было", "были", "есть", "нет", "так", "там", "тут", "где",
+    "когда", "чем", "кто", "этот", "эта", "эти", "тот", "той", "при",
+    "над", "под", "про", "без", "через", "после", "перед", "между",
+    "только", "даже", "очень", "можно", "нельзя", "надо", "нужно",
+    "делать", "сделать", "может", "буду", "будет", "хочу", "хотела",
+    "пожалуйста", "давай", "скажи", "расскажи", "покажи", "найди",
+    "the", "and", "for", "with", "from", "this", "that", "you", "your",
+    "are", "was", "were", "will", "can", "not", "but", "all", "any",
+}
+
+# Белый список read-only инструментов (параллелим только их; остальные — последовательно)
+_READ_ONLY_TOOLS = {
+    "desktop_status", "desktop_list_windows",
+    "senses_running_apps", "senses_take_screenshot",
+    "read_skill_file", "list_skill_files", "list_skills",
+    "project_read", "project_list", "project_status",
+    "google_ai_status", "hunter_status", "hunter_orders",
+    "get_news", "get_weather", "search_web", "search_news",
+    "search_web_ddgs", "search_news_ddgs", "search_news_by_topic",
+    "list_news_sources",
+}
+
+
+def _stem(word: str) -> str:
+    """Грубая основа для RU/EN: первые 5 символов (погода/погоду → погод)."""
+    return (word or "")[:5]
+
+
+def _tokenize(text: str) -> set:
+    words = re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9_]{3,}", (text or "").lower())
+    return {_stem(w) for w in words if w not in _STOPWORDS}
+
+
+def _read_only_allowed() -> set:
+    allowed = set(_READ_ONLY_TOOLS)
+    extra = _cfg_get("agent.parallel_tools.read_only_tools", [])
+    if isinstance(extra, list):
+        allowed.update(str(x) for x in extra)
+    return allowed
+
+
+def _is_read_only(name: str) -> bool:
+    return (name or "") in _read_only_allowed()
+
+
+def _should_parallel(tool_calls) -> bool:
+    """Параллелим только 2+ вызова, и только если все — из белого списка read-only."""
+    try:
+        if not tool_calls or len(tool_calls) < 2:
+            return False
+        return all(_is_read_only(getattr(tc.function, "name", "")) for tc in tool_calls)
+    except Exception:
+        return False
+
+
+def _parallel_limit() -> int:
+    """Лимит параллельности: ≥1 даже при 0/отрицательном/мусорном значении в конфиге."""
+    try:
+        value = int(_cfg_get("agent.parallel_tools.concurrency", 3))
+    except (TypeError, ValueError):
+        value = 3
+    return max(1, value)
+
 # Точные приветствия — только они отключают инструменты (не «да конечно сделай»)
 _GREETINGS = {
     "привет", "здравствуй", "здравствуйте", "как дела", "спокойной ночи",
@@ -124,12 +191,16 @@ class Agent:
     def __init__(self, name="Agent", config=None, tools=None, system_message="", api_keys=None):
         self.name = name
         self.config = config or OpenAIConfig()
-        self.tools = tools or []
+        self.tools = list(tools or [])
         self.system_message = system_message
         self._tool_map = {f.__name__: f for f in self.tools}
-        self._core_tools = set()       # всегда отправляются
-        self._trigger_map = {}         # tool_name → [trigger_words]
-        self._tool_cache = {}          # tool_name → openai_tool_def (кеш)
+        self._core_tools = {"find_tools"}   # всегда отправляются
+        self._trigger_map = {}              # tool_name → [trigger_words]
+        self._tool_cache = {}               # tool_name → openai_tool_def (кеш)
+        self._tool_profiles = {}            # роутер: tool → {stem: weight}
+        self._router_idf = {}
+        self._router_dirty = True
+        self._register_find_tools()
         self._api_keys = api_keys or [self.config.api_key]
         self._current_key_idx = 0
         self._key_health = {}
@@ -150,6 +221,80 @@ class Agent:
             timeout=httpx.Timeout(60.0, connect=10.0),
             max_retries=4,
         )
+
+    # ── Инструменты: find_tools + роутер ──
+
+    def _register_find_tools(self):
+        """Регистрирует мета-инструмент поиска инструментов (всегда в core)."""
+        def find_tools(query: str = "") -> str:
+            """Найти нужный инструмент по описанию, если его нет в текущем наборе."""
+            names = self._route_tools(query, limit=8)
+            if not names:
+                return "Ничего не нашлось по этому запросу."
+            lines = []
+            for n in names:
+                desc = ((self._tool_cache.get(n) or {}).get("function", {}) or {}).get("description", "")
+                if not desc:
+                    fn = self._tool_map.get(n)
+                    desc = (getattr(fn, "__doc__", "") or "").strip()
+                lines.append(f"- {n}: {desc[:140]}")
+            return "Найденные инструменты:\n" + "\n".join(lines)
+
+        find_tools._is_tool = True
+        self._find_tools = find_tools
+        self.tools.append(find_tools)
+        self._tool_map[find_tools.__name__] = find_tools
+        self._core_tools.add("find_tools")
+
+    def _ensure_router(self):
+        """Строит профили инструментов (стемы + IDF) один раз, пока не изменился набор."""
+        if not self._router_dirty and self._tool_profiles:
+            return
+        import math
+        profiles, df = {}, {}
+        for f in self.tools:
+            name = f.__name__
+            if name == "find_tools":
+                continue
+            weights = {}
+
+            def bump(tokens, w):
+                for tok in tokens:
+                    if weights.get(tok, 0) < w:
+                        weights[tok] = w
+
+            bump(_tokenize(name.replace("_", " ")), 2.0)
+            for trig in self._trigger_map.get(name, []):
+                bump(_tokenize(trig), 2.0)
+            bump(_tokenize((f.__doc__ or "")[:300]), 1.0)
+            if weights:
+                profiles[name] = weights
+                for tok in weights:
+                    df[tok] = df.get(tok, 0) + 1
+        n = max(1, len(profiles))
+        self._router_idf = {tok: math.log((n + 1) / (c + 1)) + 1.0 for tok, c in df.items()}
+        self._tool_profiles = profiles
+        self._router_dirty = False
+
+    def _route_tools(self, query: str, limit: int = 10, exclude=None) -> list:
+        """Топ инструментов по IDF-скорингу (стабильный порядок при равных score)."""
+        self._ensure_router()
+        tokens = _tokenize(query)
+        if not tokens:
+            return []
+        scored = []
+        for name, weights in self._tool_profiles.items():
+            if exclude and name in exclude:
+                continue
+            score = 0.0
+            for tok in tokens:
+                w = weights.get(tok)
+                if w:
+                    score += w * self._router_idf.get(tok, 1.0)
+            if score > 0:
+                scored.append((score, name))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return [name for _, name in scored[:limit]]
 
     def _rotate_key(self) -> bool:
         """Переключает на следующий рабочий ключ. Возвращает True если есть живой ключ."""
@@ -239,10 +384,25 @@ class Agent:
             if _is_greeting(text):
                 openai_tools = []
             else:
-                openai_tools = [self._tool_cache[f.__name__] for f in self.tools
-                    if f.__name__ in self._core_tools or any(w in txt_lower for w in self._trigger_map.get(f.__name__, []))]
-                if not openai_tools:
-                    openai_tools = list(self._tool_cache.values())  # fallback: все
+                selected = set()
+                for f in self.tools:
+                    name = f.__name__
+                    if name in self._core_tools:
+                        selected.add(name)
+                    elif any(w in txt_lower for w in self._trigger_map.get(name, [])):
+                        selected.add(name)
+                # Роутер: добираем top-K по IDF-скорингу (вместо «все 221»)
+                if bool(_cfg_get("agent.tool_router.enabled", True)):
+                    top_k = int(_cfg_get("agent.tool_router.top_k", 14))
+                    room = max(0, top_k - len(selected))
+                    if room:
+                        selected.update(self._route_tools(text, limit=room, exclude=selected))
+                if not selected:
+                    if bool(_cfg_get("agent.tool_router.fallback_all", False)):
+                        selected = set(self._tool_cache.keys())
+                    else:
+                        selected = set(self._core_tools)
+                openai_tools = [self._tool_cache[n] for n in selected if n in self._tool_cache]
             # Стабильный порядок инструментов — не ломает prompt-cache DeepSeek
             if _cfg_get("agent.sort_tools_for_cache", True):
                 openai_tools.sort(key=lambda d: d["function"]["name"])
@@ -346,24 +506,44 @@ class Agent:
                     assistant_msg["reasoning_content"] = msg.reasoning_content
                 messages.append(assistant_msg)
 
+                # find_tools: расширяем схему инструментов на следующий цикл
+                for tc in msg.tool_calls:
+                    if getattr(tc.function, "name", "") == "find_tools":
+                        try:
+                            q = json.loads(tc.function.arguments or "{}").get("query", "")
+                        except Exception:
+                            q = ""
+                        already = {d["function"]["name"] for d in openai_tools}
+                        extra_defs = [self._tool_cache[n]
+                                      for n in self._route_tools(q, limit=10, exclude=already)
+                                      if n in self._tool_cache]
+                        if extra_defs:
+                            # Новый список: не мутируем тот, что уже ушёл в запрос
+                            openai_tools = openai_tools + extra_defs
+                            if _cfg_get("agent.sort_tools_for_cache", True):
+                                openai_tools.sort(key=lambda d: d["function"]["name"])
+
                 # Execute tools and collect Observations
                 observations = []
-                # Parallel tool execution (DeepSeek supports concurrent calls)
-                if len(msg.tool_calls) > 1:
+                # Параллельно — только независимые read-only вызовы (белый список);
+                # всё, что меняет состояние, исполняем последовательно.
+                if _should_parallel(msg.tool_calls):
                     import asyncio as _asyncio
+                    _sem = _asyncio.Semaphore(_parallel_limit())
 
                     async def _exec_one(tc):
-                        tool_name = tc.function.name
-                        tool_fn = self._tool_map.get(tool_name)
-                        if tool_fn:
-                            try:
-                                args = json.loads(tc.function.arguments)
-                                loop = _asyncio.get_event_loop()
-                                result = await loop.run_in_executor(None, lambda: tool_fn(**args) if args else tool_fn())
-                                return tc.id, tool_name, str(result), True
-                            except Exception as e:
-                                return tc.id, tool_name, f"Error: {e}", False
-                        return tc.id, tool_name, f"Tool '{tool_name}' not available", False
+                        async with _sem:
+                            tool_name = tc.function.name
+                            tool_fn = self._tool_map.get(tool_name)
+                            if tool_fn:
+                                try:
+                                    args = json.loads(tc.function.arguments)
+                                    loop = _asyncio.get_event_loop()
+                                    result = await loop.run_in_executor(None, lambda: tool_fn(**args) if args else tool_fn())
+                                    return tc.id, tool_name, str(result), True
+                                except Exception as e:
+                                    return tc.id, tool_name, f"Error: {e}", False
+                            return tc.id, tool_name, f"Tool '{tool_name}' not available", False
 
                     results = await _asyncio.gather(*[_exec_one(tc) for tc in msg.tool_calls])
                     for tid, tool_name, result, success in results:
@@ -489,7 +669,7 @@ class Agent:
 
     def set_core_tools(self, tool_names: list):
         """Отметить инструменты как ядерные (отправляются всегда)."""
-        self._core_tools = set(tool_names)
+        self._core_tools = set(tool_names) | {"find_tools"}
 
     def add_tools(self, new_tools: List[Callable], triggers: dict = None):
         """Добавить инструменты с триггерными словами (опционально).
@@ -511,3 +691,4 @@ class Agent:
             self._tool_map[f.__name__] = f
         if triggers:
             self._trigger_map.update(triggers)
+        self._router_dirty = True

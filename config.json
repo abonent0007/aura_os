@@ -1,6 +1,6 @@
 {
   "_comment": "==================== AURA OS CONFIG ====================",
-  "_version": "4.4.0",
+  "_version": "4.5.0",
   "_note": "API ключи в .env файле, здесь только публичные настройки",
   "agent": {
     "_comment": "Основной мозг — DeepSeek V4.1 Flash (нативная мультимодальность, 2026-09-10)",
@@ -17,6 +17,15 @@
     "default_result_limit": 2000,
     "metrics_enabled": true,
     "sort_tools_for_cache": true,
+    "tool_router": {
+      "enabled": true,
+      "top_k": 14,
+      "fallback_all": false
+    },
+    "parallel_tools": {
+      "concurrency": 3,
+      "read_only_tools": []
+    },
     "tool_result_limits": {
       "read_skill_file": 18000,
       "project_read": 18000,
