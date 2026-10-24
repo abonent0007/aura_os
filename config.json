@@ -1,6 +1,6 @@
 {
   "_comment": "==================== AURA OS CONFIG ====================",
-  "_version": "4.9.1",
+  "_version": "4.10.0",
   "_note": "API ключи в .env файле, здесь только публичные настройки",
   "agent": {
     "_comment": "Основной мозг — DeepSeek V4.1 Flash (нативная мультимодальность, 2026-09-10)",
@@ -19,6 +19,7 @@
     "sort_tools_for_cache": true,
     "tool_router": {
       "enabled": true,
+      "max_tools": 22,
       "top_k": 14,
       "fallback_all": false
     },

@@ -64,6 +64,35 @@ def _tokenize(text: str) -> set:
     return {_stem(w) for w in words if w not in _STOPWORDS}
 
 
+def _match_stems(text: str) -> set:
+    """Основы для мягкого матчинга триггеров (вода/воды, погода/погоду)."""
+    words = re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9_]{3,}", (text or "").lower())
+    out = set()
+    for w in words:
+        if w in _STOPWORDS:
+            continue
+        out.update(_stem_variants(w))
+    return out
+
+
+def _stem_variants(word: str) -> set:
+    w = (word or "").lower()
+    variants = {w[:5], w[:4], re.sub(r"[аяоеёиыуьюй]+$", "", w)}
+    return {v for v in variants if len(v) >= 3}
+
+
+def _trigger_hits(trigs, txt: str, stems: set) -> int:
+    """Сколько триггеров сработало (подстрока или основа слова)."""
+    hits = 0
+    for w in trigs or []:
+        wl = str(w).lower().strip()
+        if not wl:
+            continue
+        if wl in txt or (_stem_variants(wl) & stems):
+            hits += 1
+    return hits
+
+
 def _read_only_allowed() -> set:
     allowed = set(_READ_ONLY_TOOLS)
     extra = _cfg_get("agent.parallel_tools.read_only_tools", [])
@@ -106,6 +135,62 @@ def _is_greeting(text: str) -> bool:
     """Сообщение — ровно приветствие (а не команда, начинающаяся с «да»)."""
     clean = text.strip().lower().strip("!.,?… ")
     return clean in _GREETINGS
+
+
+# ── Двухуровневое ядро инструментов ──
+# always_on — инструменты, которые нужны почти в каждом запросе. Остальные
+# core-инструменты (правка скиллов, душа, трассировка, координаты) подключаются
+# по триггерам или IDF-роутером — иначе 40+ схем висят в каждом промпте.
+DEFAULT_ALWAYS_ON = [
+    "search_memory",
+    "remember_fact",
+    "get_user_context",
+    "get_today_events",
+    "add_event",
+    "get_today_summary",
+    "search_web",
+    "search_news",
+    "get_weather",
+    "analyze_image",
+    "open_url",
+    "system_health",
+    "telegram_send_message",
+]
+
+# Триггеры для инструментов вне always_on: core-инструменты и точечные добавки
+# к скилловым (дата/время), которых нет в манифесте.
+DEFAULT_TOOL_TRIGGERS = {
+    "telegram_send_photo": ["телеграм", "telegram", "отправь фото"],
+    "telegram_send_document": ["телеграм", "telegram", "отправь файл", "документ"],
+    "get_weather_forecast": ["прогноз", "погода на", "погоду на"],
+    "get_weather_by_coords": ["координат"],
+    "get_upcoming_events": ["ближайш", "предстоящ", "на неделе"],
+    "search_calendar": ["календар", "найди событи"],
+    "complete_task_by_name": ["заверши", "выполнил", "отметь выполненным"],
+    "reschedule_task": ["перенеси", "перенести"],
+    "get_birthdays_list": ["дни рождения", "день рождения", "днюх"],
+    "add_birthday_reminder": ["день рождения", "днюх"],
+    "check_due_reminders": ["напоминани", "напомни"],
+    "read_skill_file": ["файл скилл", "код скилл", "skill.py", "прочитай скилл"],
+    "edit_skill_file": ["отредактируй скилл", "измени скилл", "правк скилл"],
+    "patch_skill_file": ["замени в скилл", "точечн"],
+    "delete_skill_file": ["удали скилл", "удалить скилл"],
+    "list_skill_files": ["список скилл", "структура скилл", "какие скилл"],
+    "reload_skills": ["перезагрузи скилл", "reload"],
+    "build_skill": ["создай скилл", "новый скилл", "сделай скилл"],
+    "trace_stats": ["трассировк", "статистика агента"],
+    "trace_search": ["трассировк", "история вызовов"],
+    "learn_from_traces": ["улучши агент", "предложи улучшени"],
+    "soul_read": ["душ", "дневник душ"],
+    "soul_dream_read": ["сон", "сны"],
+    "soul_stats": ["статистика душ"],
+    "orchestrator_run": ["мультиперсон", "совет модел", "orchestrator"],
+    "doubt_check": ["проверь утверждени", "свежий взгляд", "сомнева"],
+    "get_today_date": ["какое сегодня число", "какая сегодня дата",
+                       "сегодняшняя дата", "какой сегодня день"],
+    "project_write": ["напиши код", "напиши файл", "создай файл", "запиши файл"],
+    "project_create": ["создай проект", "новый проект"],
+}
 
 
 def _strip_pseudo_calls(text: str) -> str:
@@ -199,6 +284,7 @@ class Agent:
         self._tool_cache = {}               # tool_name → openai_tool_def (кеш)
         self._tool_profiles = {}            # роутер: tool → {stem: weight}
         self._router_idf = {}
+        self._doc_stems = {}                # tool → основы слов из docstring
         self._router_dirty = True
         self._register_find_tools()
         self._api_keys = api_keys or [self.config.api_key]
@@ -227,7 +313,7 @@ class Agent:
     def _register_find_tools(self):
         """Регистрирует мета-инструмент поиска инструментов (всегда в core)."""
         def find_tools(query: str = "") -> str:
-            """Найти нужный инструмент по описанию, если его нет в текущем наборе."""
+            """Найти инструмент по описанию, если нужного действия нет в текущем наборе."""
             names = self._route_tools(query, limit=8)
             if not names:
                 return "Ничего не нашлось по этому запросу."
@@ -252,11 +338,13 @@ class Agent:
             return
         import math
         profiles, df = {}, {}
+        self._doc_stems = {}
         for f in self.tools:
             name = f.__name__
             if name == "find_tools":
                 continue
             weights = {}
+            self._doc_stems[name] = _match_stems((f.__doc__ or "")[:400])
 
             def bump(tokens, w):
                 for tok in tokens:
@@ -276,25 +364,107 @@ class Agent:
         self._tool_profiles = profiles
         self._router_dirty = False
 
-    def _route_tools(self, query: str, limit: int = 10, exclude=None) -> list:
-        """Топ инструментов по IDF-скорингу (стабильный порядок при равных score)."""
+    def _route_scores(self, query: str) -> dict:
+        """IDF-скоринг всех инструментов: {name: score}."""
         self._ensure_router()
         tokens = _tokenize(query)
         if not tokens:
-            return []
-        scored = []
+            return {}
+        scores = {}
         for name, weights in self._tool_profiles.items():
-            if exclude and name in exclude:
-                continue
             score = 0.0
             for tok in tokens:
                 w = weights.get(tok)
                 if w:
                     score += w * self._router_idf.get(tok, 1.0)
             if score > 0:
-                scored.append((score, name))
-        scored.sort(key=lambda item: (-item[0], item[1]))
-        return [name for _, name in scored[:limit]]
+                scores[name] = score
+        return scores
+
+    def _route_tools(self, query: str, limit: int = 10, exclude=None) -> list:
+        """Топ инструментов по IDF-скорингу (стабильный порядок при равных score)."""
+        scores = self._route_scores(query)
+        items = [(s, n) for n, s in scores.items() if not (exclude and n in exclude)]
+        items.sort(key=lambda item: (-item[0], item[1]))
+        return [name for _, name in items[:limit]]
+
+    def _always_on_names(self) -> set:
+        """Инструменты, которые отправляются в каждом запросе (12–13 штук).
+
+        always_on — подмножество core-пула (set_core_tools). Если пересечение
+        пусто (кастомный агент со своим набором инструментов), уважаем весь
+        core-пул — прежнее поведение.
+        """
+        names = _cfg_get("agent.tool_router.always_on", None)
+        if not isinstance(names, list) or not names:
+            names = DEFAULT_ALWAYS_ON
+        known = {f.__name__ for f in self.tools}
+        core_pool = {n for n in self._core_tools if n in known}
+        configured = {str(n) for n in names if str(n) in known}
+        selected = (configured & core_pool) if core_pool else configured
+        if not selected and core_pool:
+            selected = core_pool
+        if "find_tools" in known:
+            selected.add("find_tools")
+        return selected
+
+    def _select_tool_names(self, text: str, cap: int = None) -> set:
+        """Итоговый набор инструментов для LLM: always-on + триггеры + IDF-добор.
+
+        cap — жёсткий потолок (по умолчанию agent.tool_router.max_tools).
+        Порядок: always-on → curated-триггеры → триггеры скиллов (по числу
+        совпавших слов и IDF-скорингу) → IDF-добор. Всё, кроме always-on,
+        подчиняется потолку.
+        """
+        if _is_greeting(text):
+            return set()
+
+        txt = (text or "").lower()
+        stems = _match_stems(text)
+        known = {f.__name__ for f in self.tools}
+        selected = self._always_on_names()
+        if cap is None:
+            cap = int(_cfg_get("agent.tool_router.max_tools", 22))
+
+        # 1) curated-триггеры (core + точечные добавки) — высокая точность
+        cfg_trigs = _cfg_get("agent.tool_router.tool_triggers", None)
+        curated = cfg_trigs if isinstance(cfg_trigs, dict) else DEFAULT_TOOL_TRIGGERS
+        for name, trigs in curated.items():
+            if name in selected or name not in known:
+                continue
+            if _trigger_hits(trigs, txt, stems):
+                selected.add(name)
+
+        # 2) триггеры скиллов — в пределах потолка, лучшие совпадения первыми
+        room = max(0, int(cap) - len(selected))
+        if room:
+            scores = self._route_scores(text)
+            candidates = []
+            for name, trigs in self._trigger_map.items():
+                if name in selected or name not in known:
+                    continue
+                hits = _trigger_hits(trigs, txt, stems)
+                if not hits:
+                    continue
+                overlap = len(stems & self._doc_stems.get(name, set()))
+                candidates.append((hits, overlap, scores.get(name, 0.0), name))
+            candidates.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]))
+            for _, _, _, name in candidates[:room]:
+                selected.add(name)
+
+        # 3) IDF-добор до потолка
+        if bool(_cfg_get("agent.tool_router.enabled", True)):
+            room = min(int(_cfg_get("agent.tool_router.top_k", 14)),
+                       max(0, int(cap) - len(selected)))
+            if room:
+                selected.update(self._route_tools(text, limit=room, exclude=selected))
+
+        if not selected:
+            if bool(_cfg_get("agent.tool_router.fallback_all", False)):
+                selected = set(self._tool_cache.keys()) or known
+            else:
+                selected = self._always_on_names()
+        return selected
 
     def _rotate_key(self) -> bool:
         """Переключает на следующий рабочий ключ. Возвращает True если есть живой ключ."""
@@ -354,6 +524,7 @@ class Agent:
         _t_ask = __import__('time').perf_counter()
         _metrics_on = bool(_cfg_get("agent.metrics_enabled", True))
         _usage_total = {"steps": 0, "prompt": 0, "completion": 0, "cached": 0}
+        _tools_sent = 0
 
         def _log_metrics(outcome: str = "ok") -> None:
             if not _metrics_on:
@@ -362,8 +533,8 @@ class Agent:
                 from loguru import logger
                 dt = int((__import__('time').perf_counter() - _t_ask) * 1000)
                 logger.info(
-                    "ask: {} | steps={} total={}ms | prompt={} completion={} cached={}",
-                    outcome, _usage_total["steps"], dt,
+                    "ask: {} | steps={} tools={} total={}ms | prompt={} completion={} cached={}",
+                    outcome, _usage_total["steps"], _tools_sent, dt,
                     _usage_total["prompt"], _usage_total["completion"], _usage_total["cached"],
                 )
             except Exception:
@@ -380,32 +551,15 @@ class Agent:
                 if f.__name__ not in self._tool_cache:
                     self._tool_cache[f.__name__] = function_to_openai_tool(f)
 
-            txt_lower = text.lower()
             if _is_greeting(text):
                 openai_tools = []
             else:
-                selected = set()
-                for f in self.tools:
-                    name = f.__name__
-                    if name in self._core_tools:
-                        selected.add(name)
-                    elif any(w in txt_lower for w in self._trigger_map.get(name, [])):
-                        selected.add(name)
-                # Роутер: добираем top-K по IDF-скорингу (вместо «все 221»)
-                if bool(_cfg_get("agent.tool_router.enabled", True)):
-                    top_k = int(_cfg_get("agent.tool_router.top_k", 14))
-                    room = max(0, top_k - len(selected))
-                    if room:
-                        selected.update(self._route_tools(text, limit=room, exclude=selected))
-                if not selected:
-                    if bool(_cfg_get("agent.tool_router.fallback_all", False)):
-                        selected = set(self._tool_cache.keys())
-                    else:
-                        selected = set(self._core_tools)
+                selected = self._select_tool_names(text)
                 openai_tools = [self._tool_cache[n] for n in selected if n in self._tool_cache]
             # Стабильный порядок инструментов — не ломает prompt-cache DeepSeek
             if _cfg_get("agent.sort_tools_for_cache", True):
                 openai_tools.sort(key=lambda d: d["function"]["name"])
+            _tools_sent = len(openai_tools)
 
         # ReAct: максимум 30 циклов Thought→Action→Observation
         pseudo_retry_done = False
