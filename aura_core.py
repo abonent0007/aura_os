@@ -1092,6 +1092,24 @@ def create_aura_tools(db: AuraDatabase):
             f"💡 Вывод: перепроверь своё решение с учётом найденных слабых мест."
         )
 
+    @tools.tool
+    def telegram_send_photo(file_path: str, caption: str = "") -> str:
+        """Отправить фото или скриншот в Telegram (в последний чат с ботом)."""
+        from telegram_bridge import send_photo
+        return send_photo(file_path, caption)
+
+    @tools.tool
+    def telegram_send_document(file_path: str, caption: str = "") -> str:
+        """Отправить любой файл документом в Telegram (до 50 МБ)."""
+        from telegram_bridge import send_document
+        return send_document(file_path, caption)
+
+    @tools.tool
+    def telegram_send_message(text: str) -> str:
+        """Отправить текстовое сообщение в Telegram (проактивно, в последний чат)."""
+        from telegram_bridge import send_text
+        return send_text(text)
+
     # Маркировка: ядерные инструменты не от скиллов
     all_core = [search_memory, get_today_summary, get_recent_history,
     get_today_events, get_upcoming_events, add_event,
@@ -1104,7 +1122,8 @@ def create_aura_tools(db: AuraDatabase):
     reload_skills,
     trace_stats, trace_search, learn_from_traces, system_health,
     build_skill,
-    soul_read, soul_dream_read, soul_stats]
+    soul_read, soul_dream_read, soul_stats,
+    telegram_send_photo, telegram_send_document, telegram_send_message]
     for t in all_core:
         t._from_skill = False
     return all_core

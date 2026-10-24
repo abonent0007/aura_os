@@ -1,4 +1,14 @@
-# AURA OS v4.6.1
+# AURA OS v4.7.0
+
+## Changelog v4.7.0 — Аура отправляет файлы в Telegram
+
+### Новое
+- **telegram_bridge**: запоминание chat_id (middleware в group=-1) + отправка `sendPhoto` / `sendDocument` / `sendMessage` через Bot API (с поддержкой Cloudflare-релея).
+- **Core-инструменты**: `telegram_send_photo`, `telegram_send_document`, `telegram_send_message` — Аура сама отправляет скриншоты и файлы (10/50 МБ), не «не могу — нет кнопки».
+- Проверки: существование файла, лимиты, MIME, 429-повтор (`retry_after`), атомарное состояние chat_id.
+
+### Тесты
+- **74 unit-теста** (+9: telegram_bridge — multipart, лимиты, 429, состояние).
 
 ## Changelog v4.6.1 — Telegram через Cloudflare-релей
 

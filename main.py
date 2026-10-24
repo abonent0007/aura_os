@@ -96,7 +96,8 @@ try:
     from telegram import Update, BotCommand
     from telegram.ext import (
         Application, ApplicationBuilder,
-        CommandHandler, MessageHandler, filters, ContextTypes
+        CommandHandler, MessageHandler, filters, ContextTypes,
+        TypeHandler
     )
     from telegram.constants import ParseMode
     HAS_TELEGRAM = True
@@ -104,6 +105,7 @@ except ImportError:
     HAS_TELEGRAM = False
     Update = BotCommand = None
     Application = ApplicationBuilder = CommandHandler = MessageHandler = filters = ContextTypes = None
+    TypeHandler = None
     ParseMode = None
 
 from aura_core import AuraAgent, CONFIG, check_config
@@ -277,6 +279,20 @@ class AuraTelegramBot:
         if _base_file_url:
             _builder = _builder.base_file_url(_base_file_url)
         self.app = _builder.build()
+
+        # Запоминаем chat_id любого апдейта — чтобы Аура могла писать/слать файлы
+        async def _remember_chat(update, context):
+            try:
+                from telegram_bridge import remember_chat
+                chat = update.effective_chat
+                if chat:
+                    remember_chat(chat.id)
+            except Exception:
+                pass
+
+        if TypeHandler is not None:
+            self.app.add_handler(TypeHandler(Update, _remember_chat), group=-1)
+
         await self.app.bot.set_my_commands(commands)
         
         self.app.add_handler(CommandHandler("start", self.cmd_start))
