@@ -38,6 +38,7 @@ def test_current_formatting():
     assert "+10°C" in out
     assert "облачно" in out
     assert "влажность" in out
+    assert "MET Norway" in out
 
 
 def test_today_next_hours():

@@ -1,4 +1,10 @@
-# AURA OS v4.9.0
+# AURA OS v4.9.1
+
+## Changelog v4.9.1 — Погода: compliance MET.no
+
+- **User-Agent** с ссылкой на репозиторий (требование MET.no и Nominatim).
+- **Атрибуция** «Источник: MET Norway (yr.no)» в выводе погоды.
+- Тесты: 83.
 
 ## Changelog v4.9.0 — Погода снова работает
 

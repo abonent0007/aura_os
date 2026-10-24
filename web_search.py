@@ -464,6 +464,8 @@ class WeatherService:
     GEO_URL = "https://api.openweathermap.org/geo/1.0/direct"
     METNO_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
     NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+    WEATHER_UA = ("AURA-OS/4.9 (personal assistant; "
+                  "https://github.com/abonent0007/aura_os)")
 
     # MET Norway symbol_code → русское описание
     METNO_RU = {
@@ -501,7 +503,7 @@ class WeatherService:
         if city in self._geo_cache:
             return self._geo_cache[city]
         try:
-            headers = {"User-Agent": "AURA-OS/4.9 (personal assistant)"}
+            headers = {"User-Agent": self.WEATHER_UA}
             async with httpx.AsyncClient(timeout=8.0, headers=headers) as client:
                 resp = await client.get(
                     self.NOMINATIM_URL,
@@ -522,7 +524,7 @@ class WeatherService:
                          city: str) -> str:
         """Погода через MET Norway (без ключа, JSON). None — если не вышло."""
         try:
-            headers = {"User-Agent": "AURA-OS/4.9 (personal assistant)"}
+            headers = {"User-Agent": self.WEATHER_UA}
             async with httpx.AsyncClient(timeout=8.0, headers=headers) as client:
                 resp = await client.get(self.METNO_URL, params={"lat": lat, "lon": lon})
                 resp.raise_for_status()
@@ -602,6 +604,7 @@ class WeatherService:
                 ts = by_day[day]
                 lines.append(fmt_point(ts, f"{day.strftime('%d.%m')}: "))
 
+        lines.append("Источник: MET Norway (yr.no)")
         return "\n".join(lines)
 
     async def _get_google_ai_weather(self, city: str, forecast_type: str):
