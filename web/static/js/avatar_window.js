@@ -183,6 +183,12 @@ async function initLive2D() {
     }
 }
 
+// ── Общий диалог: id окна + дедупликация сообщений ──
+const AVATAR_CLIENT_ID = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'avatar-' + Math.random().toString(36).slice(2);
+const _seenMsgIds = new Set();
+
 // ── WebSocket: автономные сообщения ядра ──
 let ws = null;
 let wsReconnectTimer = null;
@@ -202,6 +208,10 @@ function connectWS() {
                     }
                 } else if (event === 'autonomous_message') {
                     onAutonomousMessage(data && data.text ? data.text : '');
+                } else if (event === 'chat_message') {
+                    const d = data || {};
+                    if (!d.text || d.client_id === AVATAR_CLIENT_ID) return;
+                    appendMsg(d.role === 'user' ? 'user' : 'aura', d.text, d.id);
                 }
             } catch (e) {}
         };
@@ -400,7 +410,21 @@ function stopMouthAnimation() {
     fetchEmotion();
 }
 
-document.addEventListener('DOMContentLoaded', initLive2D);
+document.addEventListener('DOMContentLoaded', () => {
+    initLive2D();
+    loadAvatarHistory();
+});
+
+async function loadAvatarHistory() {
+    try {
+        const r = await fetch('/api/chat/history?limit=20');
+        if (!r.ok) return;
+        const data = await r.json();
+        (data.events || []).forEach(ev => {
+            appendMsg(ev.role === 'user' ? 'user' : 'aura', ev.text, ev.id);
+        });
+    } catch (e) {}
+}
 
 // ═══════════════════════════════════════════════════════
 // ЧАТ В ОКНЕ АВАТАРА (как в Open-LLM-VTuber)
@@ -410,9 +434,13 @@ let audioEl = null;
 let recognition = null;
 let isListening = false;
 
-function appendMsg(type, text) {
+function appendMsg(type, text, msgId) {
+    if (msgId) {
+        if (_seenMsgIds.has(msgId)) return null;
+        _seenMsgIds.add(msgId);
+    }
     const box = document.getElementById('chat-messages');
-    if (!box) return;
+    if (!box) return null;
     const div = document.createElement('div');
     div.className = 'msg ' + type;
     div.textContent = text;
@@ -436,11 +464,15 @@ async function sendUserMessage() {
         const r = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, user_id: 'avatar-window' })
+            body: JSON.stringify({
+                text,
+                user_id: 'avatar-window',
+                client_id: AVATAR_CLIENT_ID,
+            })
         });
         const data = await r.json();
         typing.remove();
-        appendMsg('aura', data.text || 'Ответ не получен');
+        appendMsg('aura', data.text || 'Ответ не получен', data.message_id);
 
         // Авто-озвучка: TTS → сервер сам анимирует рот через tts-state
         try {

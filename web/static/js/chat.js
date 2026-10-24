@@ -7,6 +7,12 @@ let isListening = false;
 let chatPaused = false;
 let pendingImage = null;  // data-URL картинки для vision (deepseek-flash)
 
+// ── Общий диалог: id окна + дедупликация сообщений по id ──
+const CHAT_CLIENT_ID = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'web-' + Math.random().toString(36).slice(2);
+const _seenChatIds = new Set();
+
 // ── Картинки: вставка из буфера и предпросмотр ──
 function clearPendingImage() {
     pendingImage = null;
@@ -125,7 +131,10 @@ async function sendChatMessage() {
 
     try {
         const endpoint = chatMode === 'expert' ? '/api/chat/expert' : '/api/chat';
-        const bodyData = { text: text || 'Посмотри на это изображение и опиши что видишь.' };
+        const bodyData = {
+            text: text || 'Посмотри на это изображение и опиши что видишь.',
+            client_id: CHAT_CLIENT_ID,
+        };
         if (imageToSend) bodyData.image = imageToSend;
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -136,7 +145,7 @@ async function sendChatMessage() {
         const data = await response.json();
 
         removeTyping(typingId);
-        appendChatMessage('assistant', data.text);
+        appendChatMessage('assistant', data.text, data.message_id);
 
         // Авто-воспроизведение TTS — полный ответ целиком (стриминг убран: обрывал конец)
         if (chatMode === 'aura' && data.text) {
@@ -182,8 +191,13 @@ function removeTyping(id) {
     if (el) el.remove();
 }
 
-function appendChatMessage(role, text) {
+function appendChatMessage(role, text, msgId) {
+    if (msgId) {
+        if (_seenChatIds.has(msgId)) return;
+        _seenChatIds.add(msgId);
+    }
     const container = document.getElementById('chatMessages');
+    if (!container) return;
     const div = document.createElement('div');
     div.className = `chat-message ${role}`;
 
@@ -237,6 +251,25 @@ function updateScrollButton() {
 document.addEventListener('DOMContentLoaded', () => {
     const c = document.getElementById('chatMessages');
     if (c) c.addEventListener('scroll', updateScrollButton);
+    loadChatHistory();
+});
+
+// ── Общий диалог: история + сообщения из других окон ──
+async function loadChatHistory() {
+    try {
+        const r = await fetch('/api/chat/history?limit=40');
+        if (!r.ok) return;
+        const data = await r.json();
+        (data.events || []).forEach(ev => {
+            appendChatMessage(ev.role === 'user' ? 'user' : 'assistant', ev.text, ev.id);
+        });
+    } catch (e) {}
+}
+
+window.addEventListener('aura:chat', (ev) => {
+    const d = (ev && ev.detail) || {};
+    if (!d.text || d.client_id === CHAT_CLIENT_ID) return;  // своё окно — уже отрисовано
+    appendChatMessage(d.role === 'user' ? 'user' : 'assistant', d.text, d.id);
 });
 
 function toggleChatPause() {

@@ -6,6 +6,7 @@
 
 import os
 import json
+import asyncio
 import subprocess
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -20,6 +21,11 @@ from pydantic import BaseModel
 import uvicorn
 
 from dotenv import load_dotenv
+
+try:
+    from .chat_bus import ChatJournal
+except ImportError:
+    from chat_bus import ChatJournal
 
 load_dotenv()
 
@@ -83,6 +89,10 @@ class AppState:
 
 state = AppState()
 
+# Общий диалог для всех окон: журнал событий + сериализация обработки
+_chat_journal = ChatJournal()
+_chat_lock = asyncio.Lock()
+
 
 # ============================================================
 # 3. МОДЕЛИ API
@@ -103,6 +113,7 @@ class MessageRequest(BaseModel):
     text: str
     user_id: str = "web_user"
     image: str = ""  # data-URL картинки (vision deepseek-flash)
+    client_id: str = "web"  # окно-источник (для общего диалога)
 
 class RollbackRequest(BaseModel):
     backup_id: Optional[str] = None
@@ -172,7 +183,7 @@ async def index(request: Request):
         name="index.html",
         context={
             "app_name": "AURA OS",
-            "version": "4.5.1",
+            "version": "4.6.0",
             "port": PORT,
             "tailscale_ip": tailscale_ip,
             "tailscale_hostname": TAILSCALE_HOSTNAME,
@@ -664,9 +675,31 @@ async def get_seeds():
 # ============================================================
 # 12. API — ОБЩЕНИЕ С АГЕНТОМ
 # ============================================================
+async def _run_chat(text: str, user_id: str, client_id: str = "web", images=None):
+    """Общий путь чата для всех окон: журнал → broadcast → обработка → broadcast.
+
+    Обработка сериализуется (_chat_lock): один диалог за раз. Broadcast — вне
+    lock, чтобы медленная рассылка не держала очередь.
+    Возвращает (текст ответа, событие ассистента).
+    """
+    user_event = _chat_journal.add("user", text, client_id)
+    await broadcast("chat_message", user_event)
+    async with _chat_lock:
+        response = await state.aura_agent.process(text, user_id, images=images)
+    assistant_event = _chat_journal.add("assistant", response, client_id)
+    await broadcast("chat_message", assistant_event)
+    return response, assistant_event
+
+
+@app.get("/api/chat/history")
+async def chat_history(limit: int = 40, after: str = ""):
+    """Общая история диалога (для восстановления после reconnect)."""
+    return {"events": _chat_journal.history(limit=limit, after=after or None)}
+
+
 @app.post("/api/chat")
 async def chat(request: MessageRequest):
-    """Отправить сообщение агенту"""
+    """Отправить сообщение агенту (общий диалог для всех окон)"""
     if not state.aura_agent:
         raise HTTPException(400, "Агент не инициализирован")
 
@@ -678,15 +711,18 @@ async def chat(request: MessageRequest):
     _core_status["updated"] = _time.time()
 
     images = [request.image] if request.image else None
-    response = await state.aura_agent.process(request.text, request.user_id, images=images)
-
-    # Думание закончено
-    _core_status["status"] = "idle"
-    _core_status["updated"] = _time.time()
+    try:
+        response, event = await _run_chat(
+            request.text, request.user_id, request.client_id, images=images
+        )
+    finally:
+        _core_status["status"] = "idle"
+        _core_status["updated"] = _time.time()
 
     return {
         "text": response,
         "user_id": request.user_id,
+        "message_id": event["id"],
     }
 
 
@@ -940,16 +976,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"event": "pong", "data": {}})
             
             elif data.get("type") == "chat":
-                # Чат через WebSocket
+                # Чат через WebSocket: тот же общий путь (журнал + broadcast)
                 if state.aura_agent:
-                    response = await state.aura_agent.process(
+                    await _run_chat(
                         data.get("text", ""),
-                        data.get("user_id", "web_user")
+                        data.get("user_id", "web_user"),
+                        data.get("client_id", "ws"),
                     )
-                    await websocket.send_json({
-                        "event": "chat_response",
-                        "data": {"text": response}
-                    })
     
     except WebSocketDisconnect:
         state.active_connections.remove(websocket)

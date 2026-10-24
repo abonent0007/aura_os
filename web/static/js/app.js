@@ -94,6 +94,9 @@ function handleWebSocketEvent(event, data) {
         case 'config_updated':
             loadSettings();
             break;
+        case 'chat_message':
+            window.dispatchEvent(new CustomEvent('aura:chat', { detail: data || {} }));
+            break;
         case 'chat_response':
             appendChatMessage('assistant', data.text);
             break;

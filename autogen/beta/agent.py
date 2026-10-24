@@ -562,9 +562,12 @@ class Agent:
                         if tool_fn:
                             try:
                                 args = json.loads(tc.function.arguments)
-                                t0 = __import__('time').time()
-                                result = tool_fn(**args) if args else tool_fn()
-                                latency = int((__import__('time').time() - t0) * 1000)
+                                t0 = __import__('time').perf_counter()
+                                loop = asyncio.get_running_loop()
+                                result = await loop.run_in_executor(
+                                    None, lambda: tool_fn(**args) if args else tool_fn()
+                                )
+                                latency = int((__import__('time').perf_counter() - t0) * 1000)
                                 tool_result = str(result)
                                 if self._trace_callback:
                                     self._trace_callback("tool_call", tool_name,
