@@ -1,0 +1,83 @@
+# freelance-hunter — конфигурация
+# Глобальные ключи Ауры подставляются из C:\aura_os\.env через ${VAR}.
+# Локальный .env проекта (если есть) имеет приоритет.
+
+# ПРОВЕРКА ИСТОЧНИКОВ: python -m freelance_hunter --config config.yaml --probe
+# kind: rss (по умолчанию) | html — тогда нужен pattern с группами url/title/desc
+sources:
+  # --- крупные биржи с безопасной сделкой и арбитражем ---
+  - name: fl.ru
+    url: https://www.fl.ru/rss/all.xml
+  - name: freelance.ru
+    url: https://freelance.ru/rss/projects.xml
+  - name: freelance.ru-alt
+    url: https://freelance.ru/rss/order.xml
+  - name: freelancejob
+    url: https://freelancejob.ru/rss/
+  - name: weblancer
+    url: https://www.weblancer.net/jobs/rss/
+  - name: weblancer-alt
+    url: https://www.weblancer.net/rss/
+  - name: freelancehunt
+    url: https://freelancehunt.com/rss/projects
+  - name: habr-freelance
+    url: https://freelance.habr.com/tasks.rss
+
+  # --- зарубежные с эскроу (оплата честная, но вывод сложнее) ---
+  - name: freelancer.com
+    url: https://www.freelancer.com/rss.xml
+  - name: weworkremotely
+    url: https://weworkremotely.com/categories/remote-programming-jobs.rss
+  - name: remoteok
+    url: https://remoteok.com/remote-jobs.rss
+
+  # --- удалённая работа и вакансии (не фриланс, но платят) ---
+  - name: hh.ru-python
+    url: https://hh.ru/search/vacancy/rss?text=python&area=1
+  - name: hh.ru-remote
+    url: https://hh.ru/search/vacancy/rss?text=python&area=1&schedule=remote
+  - name: habr-career
+    url: https://career.habr.com/vacancies/rss?q=python&remote=true
+  - name: geekjob
+    url: https://geekjob.ru/rss
+
+  # --- доски без RSS: разбираем HTML по шаблону ---
+  - name: kwork
+    url: https://kwork.ru/projects
+    kind: html
+    base: https://kwork.ru
+    pattern: '<a[^>]+href="(?P<url>/projects/\d+[^"]*)"[^>]*>(?P<title>[^<]{12,300})</a>'
+  - name: youdo
+    url: https://youdo.com/tasks-all
+    kind: html
+    base: https://youdo.com
+    pattern: '<a[^>]+href="(?P<url>/t\d+[^"]*)"[^>]*>(?P<title>[^<]{12,300})</a>'
+
+# Что берём: код и автоматизация
+accept_keywords: [скрипт, скрипты, парсер, парсинг, спарсить, бот, телеграм, telegram, api, автоматизация, автоматизировать, донастроить, доделать, допилить, доработать, исправить, баг, ошибка, excel, google sheets, apps script, python, pandas, sql, sqlite, json, csv, aiogram, django, flask, fastapi, selenium, requests, gpt, llm, макрос, макросы, vba, выгрузка, отчёт]
+
+# Что мимо: не наш профиль и то, что требует безнала/юрлица (у Юры нет ИП)
+reject_keywords: [мобильное приложение, android, ios, дизайн, логотип, фото, фотошоп, вёрстка, верстка, копирайт, статьи, сео, seo, таргет, смм, продвижение, обзвон, холодные звонки, 1с, битрикс, bitrix, crm, бухгалтер, репетитор, диплом, курсовая, чертёж, чертеж, смета, оператор, курьер, набор текста, безнал, счёт на оплату, закрывающие документы, юрлицо, юридическое лицо, срочно]
+
+min_score: 2
+min_length: 30
+max_length: 1200
+
+db_path: orders.db
+
+# Оценка заказов — через тот же DeepSeek, что и сама Аура
+llm_base_url: https://api.deepseek.com/v1
+llm_api_key: ${DEEPSEEK_API_KEY}
+llm_model: deepseek-flash
+llm_timeout: 30
+
+# Telegram без VPN недоступен — оставлено выключенным.
+# Если появится VPN: заполни оба поля, и уведомления включатся.
+telegram_token: ""
+telegram_chat_id: ""
+
+fallback_price: 3000
+fallback_days: 3
+
+telegram_timeout: 10
+fetch_timeout: 20

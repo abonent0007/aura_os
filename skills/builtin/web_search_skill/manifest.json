@@ -6,7 +6,7 @@
   "category": "tools",
   "dependencies": ["ddgs>=8.0"],
   "python_version": ">=3.11",
-  "triggers": ["найди", "загугли", "поиск", "search", "новости"],
+  "triggers": ["найди", "загугли", "поиск", "search", "найди в интернете"],
   "permissions": ["network"],
   "auto_created": false,
   "stability": "stable",

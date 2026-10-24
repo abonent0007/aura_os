@@ -5,16 +5,14 @@
 """
 
 import os
-import sys
 import json
-import asyncio
 import subprocess
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -104,6 +102,7 @@ class ConfigUpdateRequest(BaseModel):
 class MessageRequest(BaseModel):
     text: str
     user_id: str = "web_user"
+    image: str = ""  # data-URL картинки (vision deepseek-flash)
 
 class RollbackRequest(BaseModel):
     backup_id: Optional[str] = None
@@ -173,13 +172,24 @@ async def index(request: Request):
         name="index.html",
         context={
             "app_name": "AURA OS",
-            "version": "4.1.0",
+            "version": "4.4.0",
             "port": PORT,
             "tailscale_ip": tailscale_ip,
             "tailscale_hostname": TAILSCALE_HOSTNAME,
             "local_url": f"http://localhost:{PORT}",
             "tailscale_url": f"http://{TAILSCALE_HOSTNAME}:{PORT}" if tailscale_ip else None,
         },
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+    )
+
+
+@app.get("/avatar-window", response_class=HTMLResponse)
+async def avatar_window_page(request: Request):
+    """Standalone страница плавающего окна аватара (прозрачный фон)."""
+    return templates.TemplateResponse(
+        request=request,
+        name="avatar.html",
+        context={},
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
     )
 
@@ -622,6 +632,35 @@ async def health():
     return health_status
 
 
+@app.get("/api/seeds")
+async def get_seeds():
+    """Семена Ауры — внешняя память взаимодействий (только для владельца)."""
+    if not state.aura_agent or not hasattr(state.aura_agent, "seeds"):
+        return {"status": "unavailable", "seeds": []}
+    try:
+        store = state.aura_agent.seeds
+        seeds = store.live_seeds()
+        return {
+            "status": store.status(),
+            "seeds": [
+                {
+                    "id": s["id"],
+                    "time": s["time"],
+                    "date_key": s.get("date_key", ""),
+                    "touched": s["touched"],
+                    "resonated": s["resonated"],
+                    "unresolved": s["unresolved"],
+                    "gradient": s["gradient"],
+                    "weight": round(s["weight"], 3),
+                    "used_for_initiative": bool(s.get("used_for_initiative", 0)),
+                }
+                for s in seeds[-50:]
+            ],
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e), "seeds": []}
+
+
 # ============================================================
 # 12. API — ОБЩЕНИЕ С АГЕНТОМ
 # ============================================================
@@ -633,7 +672,17 @@ async def chat(request: MessageRequest):
 
     add_log("info", f"Сообщение: {request.text[:100]}", "chat")
 
-    response = await state.aura_agent.process(request.text, request.user_id)
+    # Статус ядра: Аура думает
+    import time as _time
+    _core_status["status"] = "thinking"
+    _core_status["updated"] = _time.time()
+
+    images = [request.image] if request.image else None
+    response = await state.aura_agent.process(request.text, request.user_id, images=images)
+
+    # Думание закончено
+    _core_status["status"] = "idle"
+    _core_status["updated"] = _time.time()
 
     return {
         "text": response,
@@ -685,14 +734,17 @@ async def chat_tts(request: TTSRequest):
         except Exception:
             pass
 
-        # Аватар: только если не пропущен (стриминговые превью пропускают)
-        if state.avatar and not request.skip_avatar:
+        # Плавающее Live2D-окно: синхронизация рта через WebSocket + polling-состояние
+        if not request.skip_avatar:
+            import time as _time
+            _last_tts_state["time"] = _time.time()
+            _last_tts_state["duration"] = round(audio_duration, 2)
+            _last_tts_state["text"] = text[:300]
+            _core_status["status"] = "speaking"
+            _core_status["updated"] = _time.time()
+            import asyncio as _asyncio
             try:
-                import threading
-                threading.Thread(
-                    target=lambda: state.avatar.speak(text, audio_duration),
-                    daemon=True
-                ).start()
+                _asyncio.create_task(broadcast("tts_start", {"duration": audio_duration, "text": text[:300]}))
             except Exception:
                 pass
 
@@ -714,6 +766,124 @@ async def avatar_stop():
         except Exception:
             pass
     return {"status": "ok"}
+
+
+@app.get("/api/avatar/emotion")
+async def avatar_emotion():
+    """Эмоциональное состояние Ауры из aura_soul.db (для Live2D аватара)."""
+    try:
+        if not state.aura_agent or not hasattr(state.aura_agent, 'soul_conn'):
+            return {"happiness": 0.5, "anxiety": 0.0, "energy": 0.7}
+        row = state.aura_agent.soul_conn.execute(
+            "SELECT * FROM emotional_state ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return {"happiness": 0.5, "anxiety": 0.0, "energy": 0.7}
+        return {
+            "happiness": round(row["happiness"], 2),
+            "anxiety": round(row["anxiety"], 2),
+            "energy": round(row["energy"], 2),
+        }
+    except Exception:
+        return {"happiness": 0.5, "anxiety": 0.0, "energy": 0.7}
+
+
+@app.post("/api/avatar/purr")
+async def avatar_purr():
+    """Мурлыканье питомца (реакция на клик по аватару)."""
+    try:
+        from plugins.pet_sounds import play_purr
+        ok = play_purr(duration=2.0)
+        return {"status": "ok" if ok else "no_sound"}
+    except Exception:
+        return {"status": "error"}
+
+
+_last_tts_state = {"time": 0.0, "duration": 0.0, "text": ""}
+_core_status = {"status": "idle", "updated": 0.0}
+
+
+@app.get("/api/avatar/tts-state")
+async def avatar_tts_state():
+    """Состояние последнего TTS + статус ядра (для субтитров и рта аватара)."""
+    # Авто-сброс «speaking» → «idle» когда речь закончилась (тишина не должна весить вечно)
+    if _core_status["status"] == "speaking":
+        import time as _time
+        elapsed = _time.time() - _last_tts_state.get("time", 0)
+        if elapsed > _last_tts_state.get("duration", 5) + 1.0:
+            _core_status["status"] = "idle"
+            _core_status["updated"] = _time.time()
+    # Если текста нет — и говорить не о чем: никогда не показываем «speaking» без текста
+    if not _last_tts_state.get("text"):
+        _core_status["status"] = "idle"
+    return {**_last_tts_state, "core": _core_status["status"]}
+
+
+@app.get("/api/autonomy/state")
+async def autonomy_state():
+    """Состояние автономного наблюдателя (AIRI-логика)."""
+    try:
+        obs = getattr(state.aura_agent, '_observer', None)
+        if obs:
+            return obs.get_state()
+        return {"enabled": False, "running": False, "error": "observer not found"}
+    except Exception:
+        return {"enabled": False, "running": False, "error": "unavailable"}
+
+
+@app.post("/api/autonomy/privacy")
+async def autonomy_privacy(request: Request):
+    """Включить/выключить приватность наблюдателя (?mode=on/off)."""
+    try:
+        mode = request.query_params.get("mode", "on")
+        obs = getattr(state.aura_agent, '_observer', None)
+        if obs:
+            obs.set_privacy(mode == "on")
+            return {"status": "ok", "privacy": obs._privacy}
+        return {"status": "error", "error": "observer not found"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+AVATAR_MODELS = ["mao", "shizuku", "haru", "hibiki", "izumi"]
+
+
+@app.get("/api/avatar/model")
+async def avatar_model_get():
+    """Текущая модель аватара из config.json."""
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        cfg_path = _Path(__file__).parent.parent / "config.json"
+        with open(cfg_path, "r", encoding="utf-8-sig") as f:
+            cfg = _json.load(f)
+        model = cfg.get("avatar", {}).get("model", "mao")
+        return {"model": model if model in AVATAR_MODELS else "mao"}
+    except Exception:
+        return {"model": "mao"}
+
+
+class AvatarModelRequest(BaseModel):
+    model: str
+
+
+@app.post("/api/avatar/model")
+async def avatar_model_set(request: AvatarModelRequest):
+    """Смена модели аватара (пишет в config.json, окно подхватит через polling)."""
+    if request.model not in AVATAR_MODELS:
+        raise HTTPException(400, f"Неизвестная модель. Доступны: {AVATAR_MODELS}")
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        cfg_path = _Path(__file__).parent.parent / "config.json"
+        with open(cfg_path, "r", encoding="utf-8-sig") as f:
+            cfg = _json.load(f)
+        cfg.setdefault("avatar", {})["model"] = request.model
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            _json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return {"model": request.model, "status": "ok"}
+    except Exception as e:
+        raise HTTPException(500, f"Не удалось сохранить: {e}")
 
 
 @app.get("/api/timezones")
@@ -806,14 +976,9 @@ def init_web_server(aura_agent, skill_manager, rollback_manager, system_monitor,
         aura_agent.agent.add_tools(skill_tools, triggers)
         print(f"[skills] Integrated {len(skill_tools)} skill tools")
 
-    # Инициализация аватара
-    try:
-        from plugins.aura_avatar.aura_avatar import AuraAvatar
-        state.avatar = AuraAvatar()
-        print("[avatar] AURA Avatar initialized")
-    except Exception as e:
-        print(f"[avatar] Avatar init skipped: {e}")
-        state.avatar = None
+    # Аватар: старый tkinter заменён на Live2D (Mao Pro) в дашборде → страница «Аватар»
+    state.avatar = None
+    print("[avatar] Live2D Mao Pro — в дашборде (страница «Аватар»), tkinter отключён")
 
     add_log("info", "Веб-сервер инициализирован", "system")
 

@@ -9,15 +9,28 @@ API: One Call 4.0 — https://api.openweathermap.org/data/4.0/onecall/current
 Requires "One Call by Call" subscription (1,000 calls/day free).
 """
 
-import sys, asyncio, httpx, argparse
+import sys, os, asyncio, httpx, argparse
+from pathlib import Path
 
-KEYS = [
-    "9ccb619f869de07c7adbb75cc47c6faf",
-    "fecd18c530815576fd093eb555fef275",
-    "bd5e378503939ddaee76f12ad7a97608",
-    "51e154b61c72032ef18f3b7eea32a959",
-    "b1b15e88fa797225412429c1c50c122a1",
-]
+# Это ручной диагностический скрипт (python test_weather_keys.py), а не pytest-набор:
+# функции принимают аргументы. Отключаем автоматический сбор pytest.
+__test__ = False
+
+# Ключи не хранятся в коде (репозиторий публичный) — читаем из .env/окружения.
+# Можно задать несколько: OPENWEATHERMAP_API_KEY, OPENWEATHERMAP_API_KEY_2, ...
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).with_name(".env"))
+except Exception:
+    pass
+
+KEYS = [v for v in (
+    os.getenv("OPENWEATHERMAP_API_KEY"),
+    os.getenv("OPENWEATHERMAP_API_KEY_2"),
+    os.getenv("OPENWEATHERMAP_API_KEY_3"),
+    os.getenv("OPENWEATHERMAP_API_KEY_4"),
+    os.getenv("OPENWEATHERMAP_API_KEY_5"),
+) if v]
 
 # ── Geocoding: city → lat/lon ──
 async def geocode(city: str, key: str) -> tuple:
@@ -124,6 +137,10 @@ async def main():
     args = p.parse_args()
 
     keys_to_test = [args.key] if args.key else KEYS
+
+    if not keys_to_test:
+        print("Нет ключей: добавь OPENWEATHERMAP_API_KEY в .env или запусти с --key KEY")
+        return
 
     print(f"\n{'='*60}")
     print(f"OpenWeatherMap One Call API 4.0 — Key Tester")

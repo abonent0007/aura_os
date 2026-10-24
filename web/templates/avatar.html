@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AURA Avatar</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    /* ── Аватар ── */
+    #avatar-area {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #live2d-canvas {
+      cursor: grab;
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 8px 24px rgba(0,0,0,0.4));
+    }
+    .hint {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      pointer-events: none;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    }
+
+    /* ── Статус ядра ── */
+    #core-status {
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.9);
+      background: rgba(20,20,30,0.55);
+      border-radius: 12px;
+      padding: 4px 10px;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    }
+    .status-dot-inner {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #888; transition: background 0.4s, box-shadow 0.4s;
+    }
+    .core-status.thinking .status-dot-inner { background: #ffb020; box-shadow: 0 0 8px #ffb020; animation: blink 0.8s infinite; }
+    .core-status.speaking .status-dot-inner { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+    .core-status.listening .status-dot-inner { background: #f472b6; box-shadow: 0 0 8px #f472b6; animation: blink 0.6s infinite; }
+    .core-status.wake .status-dot-inner { background: #818cf8; box-shadow: 0 0 8px #818cf8; animation: blink 1.6s infinite; }
+    .core-status.idle .status-dot-inner { background: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
+    @keyframes blink { 50% { opacity: 0.3; } }
+
+    /* ── Чат-панель (как в Open-LLM-VTuber) ── */
+    #chat-panel {
+      width: calc(100% - 16px);
+      max-width: 420px;
+      margin: 0 8px 10px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 10;
+    }
+    #chat-messages {
+      max-height: 130px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 2px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.25) transparent;
+    }
+    #chat-messages::-webkit-scrollbar { width: 4px; }
+    #chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 2px; }
+
+    .msg {
+      max-width: 85%;
+      padding: 6px 11px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      word-break: break-word;
+      white-space: pre-wrap;
+      user-select: text;
+      -webkit-user-select: text;
+      animation: msgIn 0.25s ease;
+      backdrop-filter: blur(6px);
+    }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(5px); } }
+    .msg.aura {
+      align-self: flex-start;
+      background: rgba(30,30,45,0.72);
+      color: #eee;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: rgba(139,92,246,0.8);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.typing { color: rgba(255,255,255,0.55); font-style: italic; }
+
+    /* ── Ввод ── */
+    #chat-input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      background: rgba(20,20,32,0.72);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 22px;
+      padding: 5px 6px 5px 14px;
+      backdrop-filter: blur(8px);
+      transition: border-color 0.2s;
+    }
+    #chat-input-row:focus-within { border-color: rgba(167,139,250,0.65); }
+    #chat-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-size: 13px;
+      font-family: inherit;
+      padding: 5px 0;
+    }
+    #chat-input::placeholder { color: rgba(255,255,255,0.4); }
+    .round-btn {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      transition: background 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    .round-btn:hover { background: rgba(255,255,255,0.22); }
+    .round-btn:active { transform: scale(0.9); }
+    .round-btn.send { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
+    .round-btn.send:hover { background: linear-gradient(135deg, #c4b5fd, #8b5cf6); }
+    .round-btn.listening { background: #ef4444; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 12px #ef4444; } }
+  </style>
+</head>
+<body>
+  <div id="avatar-area">
+    <canvas id="live2d-canvas"></canvas>
+    <div class="hint">Кликни по Ауре 💕</div>
+
+    <div id="core-status" class="core-status">
+      <span class="status-dot-inner"></span>
+      <span id="core-status-text">Сплю... 💤</span>
+    </div>
+  </div>
+
+  <div id="chat-panel">
+    <div id="chat-messages"></div>
+    <div id="chat-input-row">
+      <input id="chat-input" type="text" placeholder="Напиши Ауре..." autocomplete="off"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();sendUserMessage()}">
+      <button class="round-btn" id="btn-wake" onclick="toggleWakeWord()" title="Wake-word: скажи «Аура»">🌙</button>
+      <button class="round-btn" id="btn-voice" onclick="toggleVoiceInput()" title="Голосовой ввод">🎤</button>
+      <button class="round-btn send" onclick="sendUserMessage()" title="Отправить">➤</button>
+    </div>
+  </div>
+
+  <script src="/static/live2d/pixi.min.js"></script>
+  <script src="/static/live2d/live2dcubismcore.min.js"></script>
+  <script src="/static/live2d/live2d.min.js"></script>
+  <script src="/static/live2d/index.min.js"></script>
+  <script src="/static/js/avatar_window.js?v=11"></script>
+</body>
+</html>

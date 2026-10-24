@@ -4,14 +4,12 @@
 Загрузка, выгрузка, валидация, горячая замена скиллов.
 """
 
-import os
 import re
 import sys
 import json
 import importlib
 import importlib.util
 import inspect
-import hashlib
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable
@@ -45,6 +43,7 @@ class SkillManifest:
     python_version: str = ">=3.10"
     triggers: List[str] = field(default_factory=list)
     permissions: List[str] = field(default_factory=list)
+    tools: List[str] = field(default_factory=list)
     auto_created: bool = False
     stability: str = "testing"
     created_at: str = ""
@@ -54,7 +53,7 @@ class SkillManifest:
     _ALLOWED = {
         "name", "version", "author", "description", "category",
         "dependencies", "python_version", "triggers", "permissions",
-        "auto_created", "stability", "created_at", "updated_at"
+        "tools", "auto_created", "stability", "created_at", "updated_at"
     }
 
 
@@ -137,28 +136,35 @@ class SkillLoader:
     def load_skill(skill_path: Path, skill_name: str) -> Optional[Any]:
         """
         Загружает Python-модуль скилла.
+        skill_path — ПАПКА скилла (например skills/custom/my-skill).
         Возвращает модуль или None при ошибке.
         """
+        module_name = skill_name.replace("-", "_")
         try:
-            # Добавляем путь в sys.path
-            skill_dir = str(skill_path.parent)
+            # Папка самого скилла — чтобы работали локальные импорты (from core import ...)
+            skill_dir = str(skill_path)
             if skill_dir not in sys.path:
                 sys.path.insert(0, skill_dir)
-            
-            # Загружаем модуль
+
             spec = importlib.util.spec_from_file_location(
-                skill_name.replace("-", "_"),
+                module_name,
                 str(skill_path / "skill.py")
             )
-            
+
             if spec is None or spec.loader is None:
                 return None
-            
+
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            
+            # Регистрируем в sys.modules — иначе importlib.reload падает с ImportError
+            sys.modules[module_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(module_name, None)
+                raise
+
             return module
-            
+
         except Exception as e:
             logger.error(f"Ошибка загрузки скилла {skill_name}: {e}")
             return None
@@ -178,11 +184,20 @@ class SkillLoader:
     
     @staticmethod
     def reload_skill(skill_info: SkillInfo) -> Optional[SkillInfo]:
-        """Горячая перезагрузка скилла"""
-        if skill_info.module:
-            importlib.reload(skill_info.module)
-            skill_info.tools = SkillLoader.extract_tools(skill_info.module)
+        """Горячая перезагрузка скилла — повторное выполнение skill.py с диска.
+        (importlib.reload не работает: модуль грузится из skill.py, а не <name>.py)"""
+        if not skill_info.module or not skill_info.path:
+            return skill_info
+        try:
+            module = SkillLoader.load_skill(skill_info.path, skill_info.manifest.name)
+            if module is None:
+                return None
+            skill_info.module = module
+            skill_info.tools = SkillLoader.extract_tools(module)
             skill_info.loaded_at = datetime.now().isoformat()
+        except Exception as e:
+            logger.error(f"Ошибка перезагрузки скилла {skill_info.manifest.name}: {e}")
+            return None
         return skill_info
 
 
@@ -204,10 +219,22 @@ class SkillManager:
         CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
     
     def _load_registry(self) -> dict:
-        """Загрузка реестра (с защитой от UTF-8 BOM)"""
+        """Загрузка реестра (с защитой от UTF-8 BOM и битых файлов)"""
         if REGISTRY_FILE.exists():
-            with open(REGISTRY_FILE, "r", encoding="utf-8-sig") as f:
-                return json.load(f)
+            try:
+                with open(REGISTRY_FILE, "r", encoding="utf-8-sig") as f:
+                    content = f.read().strip()
+                if not content:
+                    logger.warning("registry.json пуст — создаю новый")
+                    return {"version": "1.0.3", "skills": {}, "creation_history": []}
+                data = json.loads(content)
+                if not isinstance(data, dict) or "skills" not in data:
+                    logger.warning("registry.json повреждён — создаю новый")
+                    return {"version": "1.0.3", "skills": {}, "creation_history": []}
+                return data
+            except json.JSONDecodeError:
+                logger.warning("registry.json повреждён — создаю новый")
+                return {"version": "1.0.3", "skills": {}, "creation_history": []}
         return {"version": "1.0.3", "skills": {}, "creation_history": []}
     
     def _save_registry(self):
@@ -228,18 +255,61 @@ class SkillManager:
         
         return skill_dirs
     
-    def load_all_skills(self) -> Dict[str, SkillInfo]:
-        """Загрузка ВСЕХ обнаруженных скиллов (включая отключенные)."""
+    def load_all_skills(self, force_reload: bool = False) -> Dict[str, SkillInfo]:
+        """Загрузка ВСЕХ обнаруженных скиллов (включая отключенные).
+        force_reload=True — перечитать уже загруженные скиллы (горячая перезагрузка).
+        Также выгружает «скиллы-призраки»: папка удалена с диска, а скилл остался в памяти."""
         skill_dirs = self.discover_skills()
-        
+
+        # Имена всех скиллов, реально существующих на диске
+        discovered_names = set()
+        for d in skill_dirs:
+            try:
+                with open(d / "manifest.json", "r", encoding="utf-8-sig") as f:
+                    discovered_names.add(json.load(f).get("name", d.name))
+            except Exception:
+                discovered_names.add(d.name)
+
+        # Выгружаем призраков (папка удалена, скилл висит в памяти)
+        ghosts = [n for n in self.skills if n not in discovered_names]
+        for name in ghosts:
+            info = self.skills.pop(name, None)
+            if info and info.module:
+                sys.modules.pop(info.module.__name__, None)
+            self.registry.get("skills", {}).pop(name, None)
+            logger.info(f"🗑️ Скилл удалён с диска, выгружен: {name}")
+
+        # Чистим реестр от стухших записей: папки давно нет, а запись осталась
+        reg_skills = self.registry.get("skills", {})
+        stale = [
+            n for n, info in reg_skills.items()
+            if not (SKILLS_DIR / str(info.get("path", "")).replace("\\", "/") / "manifest.json").exists()
+        ]
+        for name in stale:
+            reg_skills.pop(name, None)
+            logger.info(f"🧹 Стухшая запись реестра удалена: {name}")
+
+        if ghosts or stale:
+            self._save_registry()
+
         for skill_dir in skill_dirs:
             try:
-                # Всегда загружаем, но отмечаем enabled из реестра
-                reg_entry = self.registry.get("skills", {}).get(skill_dir.name, {})
-                if skill_dir.name not in self.skills:
-                    info = self.load_skill_from_dir(skill_dir)
-                    if info and reg_entry.get("enabled") is False:
-                        info.enabled = False
+                # Имя скилла — из манифеста (может отличаться от имени папки)
+                manifest_path = skill_dir / "manifest.json"
+                try:
+                    with open(manifest_path, "r", encoding="utf-8-sig") as f:
+                        manifest_name = json.load(f).get("name", skill_dir.name)
+                except Exception:
+                    manifest_name = skill_dir.name
+
+                reg_entry = self.registry.get("skills", {}).get(manifest_name, {})
+                if manifest_name in self.skills:
+                    if force_reload:
+                        self.reload_skill(manifest_name)
+                    continue
+                info = self.load_skill_from_dir(skill_dir)
+                if info and reg_entry.get("enabled") is False:
+                    info.enabled = False
             except Exception as e:
                 logger.error(f"Ошибка загрузки скилла {skill_dir.name}: {e}")
         
@@ -247,6 +317,9 @@ class SkillManager:
     
     def load_skill_from_dir(self, skill_dir: Path) -> Optional[SkillInfo]:
         """Загрузка одного скилла из папки"""
+        # Приводим путь к абсолютному — registry хранит relative_to(SKILLS_DIR)
+        skill_dir = Path(skill_dir).resolve()
+
         # Валидация
         valid, msg = SkillValidator.validate_skill_dir(skill_dir)
         if not valid:

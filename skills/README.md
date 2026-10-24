@@ -61,3 +61,4 @@ my_skill/
 | `test-runner` | 2 | custom |
 | `transit-watcher` | 3 | custom |
 | `aura-kitchen` | 8 | custom |
+| `google-ai` | 2 | custom |

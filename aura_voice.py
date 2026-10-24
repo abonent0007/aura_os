@@ -115,10 +115,16 @@ class SpeechToText:
             self.vosk_model = None
     
     async def transcribe_file(self, file_path: str) -> str:
-        """Распознавание аудиофайла → текст"""
+        """Распознавание аудиофайла → текст (с fallback на Vosk)"""
         
         if self.engine == "whisper_api":
-            return await self._transcribe_whisper_api(file_path)
+            try:
+                return await self._transcribe_whisper_api(file_path)
+            except Exception as e:
+                print(f"[STT] Whisper failed ({e}), fallback to Vosk")
+                if self.vosk_model:
+                    return await self._transcribe_vosk(file_path)
+                return f"Ошибка распознавания: {e}"
         elif self.engine == "vosk":
             return await self._transcribe_vosk(file_path)
         elif self.engine == "google":
@@ -383,6 +389,8 @@ class TextToSpeech:
     def _clean_for_tts(text: str) -> str:
         """Удалить из текста markdown и эмодзи для чистого голосового произношения."""
         import re
+        # КОДОВЫЕ БЛОКИ — удаляем ПЕРВЫМИ, пока тройные кавычки целы
+        text = re.sub(r'```[\s\S]*?```', ' ', text)
         # Markdown bold/italic: **...** *...* __...__
         text = re.sub(r'\*\*\*(.+?)\*\*\*', r'\1', text)
         text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
@@ -405,9 +413,6 @@ class TextToSpeech:
         text = re.sub(r'<[^>]+>', '', text)
         # Collapse multiple newlines
         text = re.sub(r'\n{3,}', '\n\n', text)
-
-        # Удаляем блоки кода в ``` (тройные кавычки) — всё что внутри считается кодом
-        text = re.sub(r'```[\s\S]*?```', '', text)
 
         # Фильтруем строки: пропускаем только с отступом (код) или без русских букв
         lines = text.split('\n')

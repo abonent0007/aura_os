@@ -9,7 +9,7 @@ const WS_URL = `ws://${window.location.host}/ws`;
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     connectWebSocket();
-    refreshDashboard();
+    if (typeof refreshDashboard === 'function') refreshDashboard();
 });
 
 // ============================================================

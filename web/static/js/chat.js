@@ -5,6 +5,48 @@ let chatMode = 'aura';
 let recognition = null;
 let isListening = false;
 let chatPaused = false;
+let pendingImage = null;  // data-URL картинки для vision (deepseek-flash)
+
+// ── Картинки: вставка из буфера и предпросмотр ──
+function clearPendingImage() {
+    pendingImage = null;
+    const prev = document.getElementById('image-preview');
+    if (prev) { prev.remove(); }
+}
+
+function attachImageFromFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        pendingImage = e.target.result;
+        let prev = document.getElementById('image-preview');
+        if (!prev) {
+            prev = document.createElement('div');
+            prev.id = 'image-preview';
+            prev.style.cssText = 'position:absolute;bottom:70px;left:20px;z-index:50;' +
+                'background:rgba(20,20,32,0.9);border:1px solid var(--border);border-radius:8px;padding:6px;';
+            const area = document.querySelector('.chat-input-area') || document.body;
+            area.style.position = 'relative';
+            area.appendChild(prev);
+        }
+        prev.innerHTML = '<img src="' + e.target.result + '" style="max-height:80px;border-radius:6px;display:block">' +
+            '<button onclick="clearPendingImage()" style="position:absolute;top:-6px;right:-6px;border-radius:50%;' +
+            'width:18px;height:18px;border:none;background:#ef4444;color:#fff;cursor:pointer;font-size:11px;line-height:1">×</button>';
+    };
+    reader.readAsDataURL(file);
+}
+
+document.addEventListener('paste', (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            attachImageFromFile(item.getAsFile());
+            e.preventDefault();
+            return;
+        }
+    }
+});
 
 // ── Голосовой ввод (Web Speech API) ──
 function toggleVoiceInput() {
@@ -68,21 +110,27 @@ function setChatMode(mode) {
 async function sendChatMessage() {
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
-    if (!text) return;
+    if (!text && !pendingImage) return;
 
-    appendChatMessage('user', text);
+    const displayText = text || '🖼️ Посмотри на это изображение';
+    appendChatMessage('user', pendingImage ? displayText + '\n[📎 изображение]' : displayText);
     input.value = '';
     input.disabled = true;
+
+    const imageToSend = pendingImage;
+    clearPendingImage();
 
     // Индикатор печати
     const typingId = showTyping();
 
     try {
         const endpoint = chatMode === 'expert' ? '/api/chat/expert' : '/api/chat';
+        const bodyData = { text: text || 'Посмотри на это изображение и опиши что видишь.' };
+        if (imageToSend) bodyData.image = imageToSend;
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify(bodyData)
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
@@ -90,10 +138,8 @@ async function sendChatMessage() {
         removeTyping(typingId);
         appendChatMessage('assistant', data.text);
 
-        // Авто-воспроизведение TTS (потоковое: быстрое начало + полный текст)
-        if (chatMode === 'aura' && data.text && data.text.length > 30) {
-            streamPlayAudio(data.text);
-        } else if (chatMode === 'aura' && data.text) {
+        // Авто-воспроизведение TTS — полный ответ целиком (стриминг убран: обрывал конец)
+        if (chatMode === 'aura' && data.text) {
             const lastMsg = document.getElementById('chatMessages').lastElementChild;
             const btn = lastMsg?.querySelector('.message-footer button:last-child');
             if (btn) playAudio(btn, data.text);
@@ -294,17 +340,7 @@ function copyMessage(copyId) {
     navigator.clipboard.writeText(text).catch(() => {});
 }
 
-// Потоковый TTS: быстрое начало + полный текст
-async function streamPlayAudio(text) {
-    const clean = text.replace(/\*\*(.+?)\*\*/g,'$1').replace(/\*(.+?)\*/g,'$1').replace(/`(.+?)`/g,'$1')
-        .replace(/```[\s\S]*?```/g,'').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/\s+/g,' ').trim();
-    const first = clean.split(/[.!?] /).slice(0, 2).join('. ') || clean.substring(0, 300);
-    let q=null;
-    try{const r=await fetch('/api/chat/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:first.substring(0,500),skip_avatar:true})});if(r.ok)q=await r.blob()}catch(e){}
-    const fp=fetch('/api/chat/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:clean.substring(0,6000)})}).then(r=>r.ok?r.blob():null).catch(()=>null);
-    if(q){if(audioPlayer){audioPlayer.pause();audioPlayer=null}audioPlayer=new Audio(URL.createObjectURL(q));audioPlayer.play().catch(()=>{})}
-    const fb=await fp;if(fb){const wp=audioPlayer&&!audioPlayer.paused;const pos=audioPlayer?audioPlayer.currentTime:0;if(audioPlayer){audioPlayer.pause();audioPlayer=null}audioPlayer=new Audio(URL.createObjectURL(fb));if(wp){audioPlayer.currentTime=Math.max(0,pos-0.5);audioPlayer.play().catch(()=>{})}}
-}
+// (стриминг-TTS удалён — обрывал конец ответа; playAudio воспроизводит полный текст)
 
 function loadAudioForLastMessage(text) {
     // Placeholder — реальный TTS требует бэкенд-запроса

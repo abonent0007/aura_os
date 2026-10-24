@@ -43,9 +43,12 @@ def _fetch_feed(url: str, timeout: int = 10) -> str:
     if not HAS_HTTPX:
         return ""
     async def _get():
-        async with httpx.AsyncClient(timeout=timeout) as c:
-            r = await c.get(url, headers={"User-Agent": "AURA-OS/1.0"}, follow_redirects=True)
-            return r.text if r.status_code == 200 else ""
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as c:
+                r = await c.get(url, headers={"User-Agent": "AURA-OS/1.0"}, follow_redirects=True)
+                return r.text if r.status_code == 200 else ""
+        except Exception:
+            return ""
     return run_async(_get(), timeout + 5) or ""
 
 

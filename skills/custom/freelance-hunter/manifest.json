@@ -1,0 +1,15 @@
+{
+  "name": "freelance-hunter",
+  "version": "1.0.0",
+  "author": "AURA OS",
+  "description": "Поиск фриланс-заказов на кодинг от имени пользователя: сканирует fl.ru и kwork, фильтрует, оценивает через DeepSeek (цена/срок/черновик отклика), ведёт базу найденного. Программа живёт в Программном цехе (skills/project/freelance-hunter).",
+  "category": "business",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": ["фриланс", "заказы", "подработка", "подработать", "найти работу", "свежие заказы", "hunter"],
+  "permissions": ["filesystem", "network"],
+  "auto_created": false,
+  "stability": "testing",
+  "created_at": "2026-09-12T16:30:00",
+  "updated_at": "2026-09-12T16:30:00"
+}

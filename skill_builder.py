@@ -145,22 +145,22 @@ class SkillBuilder:
         self.builder_agent = Agent(
             name="AURA_SkillBuilder",
             config=ag_config.OpenAIConfig(
-                model=model_config.get("model", "deepseek-v4-pro"),
+                model=model_config.get("model", "deepseek-flash"),
                 temperature=0.5,
                 max_tokens=16000,
                 api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-                base_url="https://api.deepseek.com/v1"
+                base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
             )
         )
 
         self.tester_agent = Agent(
             name="AURA_SkillTester",
             config=ag_config.OpenAIConfig(
-                model=model_config.get("model", "deepseek-v4-pro"),
+                model=model_config.get("model", "deepseek-flash"),
                 temperature=0.2,
                 max_tokens=8192,
                 api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-                base_url="https://api.deepseek.com/v1"
+                base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
             )
         )
 
@@ -269,9 +269,9 @@ class SkillBuilder:
 
         # Try multiple parse strategies
         data = None
-        # 1. Direct parse
+        # 1. Direct parse (strict=False терпит незаэкранированные переводы строк)
         try:
-            data = json.loads(content)
+            data = json.loads(content, strict=False)
         except json.JSONDecodeError:
             pass
 
@@ -280,19 +280,15 @@ class SkillBuilder:
             start = content.find("{")
             end = content.rfind("}")
             if start >= 0 and end > start:
+                json_str = content[start:end+1]
                 try:
-                    data = json.loads(content[start:end+1])
+                    data = json.loads(json_str, strict=False)
                 except json.JSONDecodeError:
-                    # 3. Fix unescaped newlines in strings
+                    # 3. Убираем висячие запятые перед } и ]
                     import re
-                    json_str = content[start:end+1]
-                    fixed = re.sub(
-                        r'(?<=":\s*")(.*?)(?=")',
-                        lambda m: m.group(0).replace('\n', '\\n').replace('\r', ''),
-                        json_str, flags=re.DOTALL
-                    )
+                    fixed = re.sub(r",\s*([}\]])", r"\1", json_str)
                     try:
-                        data = json.loads(fixed)
+                        data = json.loads(fixed, strict=False)
                     except json.JSONDecodeError:
                         pass
 
@@ -450,7 +446,7 @@ async def test_skill_builder():
     print("🔨 Тест Skill Builder")
     print("=" * 60)
 
-    builder = SkillBuilder({"model": "deepseek-v4-pro"})
+    builder = SkillBuilder({"model": "deepseek-flash"})
     request = "Создай скилл для конвертации валют через открытое API"
 
     print(f"\n📝 Запрос: {request}")

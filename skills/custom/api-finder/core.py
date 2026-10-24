@@ -16,8 +16,10 @@ from utils import run_async
 try: import httpx; HAS_HTTPX = True
 except ImportError: HAS_HTTPX = False
 
-try: from duckduckgo_search import DDGS; HAS_DDGS = True
-except ImportError: HAS_DDGS = False
+try: from ddgs import DDGS; HAS_DDGS = True          # актуальный пакет (duckduckgo-search переименован)
+except ImportError:
+    try: from duckduckgo_search import DDGS; HAS_DDGS = True  # старый пакет — fallback
+    except ImportError: HAS_DDGS = False
 
 try: from bs4 import BeautifulSoup; HAS_BS4 = True
 except ImportError: HAS_BS4 = False

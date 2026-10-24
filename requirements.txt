@@ -45,9 +45,21 @@ loguru>=0.7.0
 pydub>=0.25.0
 piper-tts>=1.4.0
 torch>=2.0.0
+antlr4-python3-runtime==4.9.3
+omegaconf>=2.2.0
 scipy>=1.10.0
 silero>=0.5.0
 
 # Plugins (optional — install when needed)
 # sentence-transformers>=3.0.0   # Orchestrator deduplication
 # Pillow>=10.0.0                  # Aura Avatar
+
+# Live2D avatar floating window
+pywebview>=6.0.0
+PyQt5>=5.15.0
+PyQtWebEngine>=5.15.0
+qtpy>=2.4.0
+
+# Tray icon
+pystray>=0.19.0
+Pillow>=10.0.0

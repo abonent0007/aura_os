@@ -21,6 +21,62 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# pythonw.exe (запуск без консоли): sys.stdout = None → print() упал бы.
+# Перенаправляем в пустоту — но параллельно пишем файловый лог (ниже).
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    sys.stderr = sys.stdout
+
+# ── Файловый лог: без него сбои pythonw неотследимы ──
+try:
+    from loguru import logger as _logger
+
+    _log_dir = Path(__file__).parent / "logs"
+    _log_dir.mkdir(exist_ok=True)
+    _logger.add(
+        _log_dir / "aura.log",
+        rotation="10 MB",
+        retention=5,
+        encoding="utf-8",
+        level="INFO",
+        backtrace=True,
+        diagnose=False,
+    )
+
+    def _excepthook(exc_type, exc_value, exc_tb):
+        _logger.opt(exception=(exc_type, exc_value, exc_tb)).critical(
+            "Необработанное исключение — AURA падает"
+        )
+
+    sys.excepthook = _excepthook
+
+    import threading as _threading
+
+    def _thread_excepthook(args):
+        _logger.opt(exception=(args.exc_type, args.exc_value, args.exc_traceback)).critical(
+            f"Необработанное исключение в потоке {args.thread.name if args.thread else '?'}"
+        )
+
+    _threading.excepthook = _thread_excepthook
+
+    # WARNING+ из стандартного logging (uvicorn и др.) — в тот же файл
+    import logging as _logging
+
+    class _InterceptHandler(_logging.Handler):
+        def emit(self, record):
+            try:
+                level = _logger.level(record.levelname).name
+            except ValueError:
+                level = record.levelno
+            _logger.opt(exception=record.exc_info).log(level, record.getMessage())
+
+    _logging.getLogger().addHandler(_InterceptHandler())
+    _logging.getLogger().setLevel(_logging.WARNING)
+
+    _logger.info("─── AURA OS стартует ───")
+except Exception:
+    pass
+
 # Fix Windows console encoding for emoji
 if sys.platform == "win32":
     try:
@@ -50,7 +106,7 @@ except ImportError:
     Application = ApplicationBuilder = CommandHandler = MessageHandler = filters = ContextTypes = None
     ParseMode = None
 
-from aura_core import AuraAgent, AuraDatabase, CONFIG, check_config
+from aura_core import AuraAgent, CONFIG, check_config
 import aura_core
 from aura_voice import VoiceMessageHandler, ResponseMode, InputMode, ResponseFormatDetector
 from web_search import WebSearchConfig, SearchTriggerDetector
@@ -225,6 +281,7 @@ class AuraTelegramBot:
         self.app.add_handler(CommandHandler("expert_chat", self.cmd_expert_chat))
         self.app.add_handler(CommandHandler("reload", self.cmd_reload))
         self.app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
+        self.app.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
         self.app.add_error_handler(self.handle_error)
         print("✅ Бот настроен")
@@ -401,7 +458,8 @@ class AuraTelegramBot:
             print(f"❌ Ошибка голоса: {e}")
             try:
                 await update.message.reply_text("😕 Ошибка обработки голоса. Попробуй ещё раз.")
-            except: pass
+            except Exception:
+                pass
     
     async def handle_text(self, update, context):
         user_id = str(update.effective_user.id)
@@ -490,8 +548,46 @@ class AuraTelegramBot:
             print(f"❌ Ошибка текста: {e}")
             try:
                 await update.message.reply_text("😕 Что-то пошло не так. Попробуй ещё раз.")
-            except: pass
+            except Exception:
+                pass
     
+    async def handle_photo(self, update, context):
+        """Фото от пользователя → зрение Ауры (DeepSeek V4.1 Flash)."""
+        import base64
+        user_id = str(update.effective_user.id)
+        try:
+            await update.message.reply_chat_action(action="typing")
+            # Берём самое большое фото
+            photo = update.message.photo[-1]
+            tg_file = await photo.get_file()
+            tmp_path = Path(os.environ.get("TEMP", "/tmp")) / f"aura_photo_{photo.file_unique_id}.jpg"
+            await tg_file.download_to_drive(str(tmp_path))
+
+            b64 = base64.b64encode(tmp_path.read_bytes()).decode("utf-8")
+            data_url = f"data:image/jpeg;base64,{b64}"
+            caption = (update.message.caption or "").strip() or "Посмотри на это фото и скажи что видишь."
+
+            self.stats["messages_processed"] += 1
+            response = await self.aura.process(caption, user_id, images=[data_url])
+
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+
+            if len(response) > 4000:
+                for i in range(0, len(response), 4000):
+                    await update.message.reply_text(response[i:i+4000])
+            else:
+                await update.message.reply_text(response)
+        except Exception as e:
+            self.stats["errors"] += 1
+            print(f"❌ Ошибка фото: {e}")
+            try:
+                await update.message.reply_text("😕 Не получилось посмотреть фото. Попробуй ещё раз.")
+            except Exception:
+                pass
+
     async def handle_error(self, update, context):
         self.stats["errors"] += 1
         print(f"❌ Ошибка бота: {context.error}")
@@ -539,7 +635,8 @@ def check_environment():
         print("[setup] Or manually: https://alphacephei.com/vosk/models")
 
     try:
-        resp = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/v1")
+        resp = urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=3)
         models = [m["name"] for m in json.loads(resp.read()).get("models", [])]
         if "nomic-embed-text" not in [m.split(":")[0] for m in models]:
             print("\n[setup] Ollama running, pulling embedding model...")
@@ -598,13 +695,37 @@ async def main():
         aura_agent = AuraAgent()
         aura_agent.set_briefing_callback(None)
         init_web_server(aura_agent, skill_manager, rollback_manager, system_monitor, skill_builder)
-        
-        # Трей-иконка
-        import threading as _th
-        _th.Thread(target=lambda: start_tray(aura_agent), daemon=True).start()
-        
-        # Graceful shutdown reference
+
+        # Автономный наблюдатель (по мотивам AIRI): смотрит на экран, заботится
         global _aura_ref
+        try:
+            from plugins.aura_autonomy import AutonomousObserver
+            from web.server import broadcast as _ws_broadcast
+            _observer = AutonomousObserver(
+                aura_agent=aura_agent,
+                config=CONFIG,
+                broadcast_fn=_ws_broadcast,
+            )
+            _observer.start()
+            _aura_ref = aura_agent
+            _aura_ref._observer = _observer  # доступ для приватного режима
+        except Exception as e:
+            print(f"[autonomy] Наблюдатель не запущен: {e}")
+        
+        # Трей-иконка — владеет ядром: закрытие трея останавливает ВСЁ
+        import threading as _th
+        _shutdown_event = _th.Event()
+
+        def _on_tray_exit():
+            try:
+                _logger.info("Выход из трея — останавливаю ядро AURA")
+            except Exception:
+                pass
+            _shutdown_event.set()
+
+        _th.Thread(target=lambda: start_tray(aura_agent, on_exit=_on_tray_exit), daemon=True).start()
+        
+        # Graceful shutdown reference (глобал объявлен выше)
         _aura_ref = aura_agent
         
         import threading
@@ -613,18 +734,29 @@ async def main():
         if args.all:
             if not HAS_TELEGRAM:
                 print("[warn] Telegram not installed. Web only.")
-                while True:
-                    await asyncio.sleep(1)
             else:
                 def _run_tg():
                     tg_bot = AuraTelegramBot(skill_manager, rollback_manager, system_monitor, skill_builder)
                     asyncio.run(tg_bot.start())
                 threading.Thread(target=_run_tg, daemon=True).start()
-                while True:
-                    await asyncio.sleep(1)
-        else:
-            while True:
-                await asyncio.sleep(1)
+        
+        # Главный цикл: ждём выхода из трея → останавливаем ядро
+        print("[core] Ядро привязано к трею. Выход из трея остановит AURA.")
+        while not _shutdown_event.is_set():
+            await asyncio.sleep(1)
+        
+        print("[core] Трей закрыт — останавливаю ядро AURA...")
+        try:
+            _logger.info("Ядро остановлено (трей закрыт)")
+        except Exception:
+            pass
+        if _aura_ref:
+            try:
+                _aura_ref._save_context()
+                _aura_ref._write_soul_entry("Ядро остановлено из трея. Я вернусь, мой хороший.", "грусть", "shutdown")
+            except Exception:
+                pass
+        return
     
     elif args.console:
         aura_agent = AuraAgent()
@@ -671,6 +803,15 @@ if __name__ == "__main__":
 
     def _graceful_shutdown():
         global _aura_ref
+        # Убиваем окна аватаров при любом завершении ядра
+        try:
+            from plugins.aura_tray import get_tray
+            tray = get_tray()
+            if tray:
+                tray._kill_desktop()
+                tray._kill_companion()
+        except Exception:
+            pass
         if _aura_ref:
             try:
                 _aura_ref._save_context()
@@ -685,6 +826,10 @@ if __name__ == "__main__":
     def _ignore_loop_closed(loop, ctx):
         exc = ctx.get("exception")
         if isinstance(exc, RuntimeError) and "Event loop is closed" in str(exc):
+            return
+        # WinError 64 «Указанное сетевое имя более недоступно» — безвредный шум
+        # при резком отключении клиента (uvicorn accept на Windows)
+        if isinstance(exc, OSError) and getattr(exc, "winerror", None) == 64:
             return
         loop.default_exception_handler(ctx)
 

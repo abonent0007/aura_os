@@ -1,0 +1,20 @@
+{
+  "name": "project-workshop",
+  "version": "1.0.0",
+  "author": "AURA",
+  "description": "Программный цех: мастерская самостоятельного софта. Список проектов, чтение файлов, мост к супервизору auras-supervisor (отчёты и безопасная разведка).",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": [
+    "программный цех",
+    "проекты",
+    "супервизор",
+    "отчёт супервизора",
+    "мастерская"
+  ],
+  "permissions": [],
+  "auto_created": true,
+  "stability": "testing",
+  "created_at": "2026-09-12"
+}

@@ -90,10 +90,13 @@ def _sync_fetch(url: str, params: dict = None) -> dict:
     if not HAS_HTTPX:
         return {"error": "httpx not installed"}
     async def _get():
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.get(url, params=params or {})
-            r.raise_for_status()
-            return r.json()
+        try:
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.get(url, params=params or {})
+                r.raise_for_status()
+                return r.json()
+        except Exception as e:
+            return {"error": str(e)}
     result = run_async(_get(), timeout=20)
     return result if result else {"error": "timeout"}
 

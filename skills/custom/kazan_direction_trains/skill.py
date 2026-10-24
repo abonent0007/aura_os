@@ -48,9 +48,12 @@ def _fetch_url(url, params=None, timeout=15):
     """HTTP GET возвращает текст (thread-safe)."""
     if not HAS_HTTPX: return ""
     async def _get():
-        async with httpx.AsyncClient(timeout=timeout) as c:
-            r = await c.get(url, params=params, headers={"User-Agent": "Mozilla/5.0"})
-            return r.text if r.status_code == 200 else ""
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as c:
+                r = await c.get(url, params=params, headers={"User-Agent": "Mozilla/5.0"})
+                return r.text if r.status_code == 200 else ""
+        except Exception:
+            return ""
     result = run_async(_get(), timeout + 5)
     return result if result else ""
 

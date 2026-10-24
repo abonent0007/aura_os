@@ -37,8 +37,19 @@ logs/*
 skills/backups/*/
 !skills/backups/index.json
 
+# Данные скиллов (генерируются при работе)
+skills/**/data.json
+skills/**/heart_data.json
+skills/**/bridge_data.json
+skills/**/session_log.json
+
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# OpenCode / Playwright / pytest
+.opencode/
+.playwright-mcp/
+.pytest_cache/

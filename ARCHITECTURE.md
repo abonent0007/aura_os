@@ -1,4 +1,15 @@
-# AURA v4.1.0 — Схема работы
+# AURA v4.2.0 — Схема работы
+
+## Аватар (Live2D Mao Pro — плавающее окно)
+```
+main.py → plugins/aura_live2d.py (отдельный процесс, pywebview)
+  └── http://localhost:8000/avatar-window (avatar.html, прозрачный фон)
+        ├── pixi.js@7.4.2 + live2dcubismcore + pixi-live2d-display@0.4.0
+        ├── Авто-моргание + слежение (autoInteract)
+        ├── Эмоции: poll /api/avatar/emotion → aura_soul.db → expression()
+        ├── Рот: WS-событие tts_start {duration} от /api/chat/tts → анимация ParamA
+        └── Клик: hit → special_motion + /api/avatar/purr → pet_sounds
+```
 
 ## Ядро
 - **Agent**: ReAct × 30 циклов, умная фильтрация инструментов по триггерам

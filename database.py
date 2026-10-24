@@ -3,7 +3,9 @@
 import sqlite3, re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+
+from config_manager import get as _cfg_get
+
 
 
 class EventCategory:
@@ -114,6 +116,13 @@ class AuraDatabase:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        # Производительность/конкурентность: WAL, мягкая синхронизация, ожидание блокировок
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+            self.conn.execute(f"PRAGMA busy_timeout={int(_cfg_get('database.busy_timeout_ms', 5000))}")
+        except sqlite3.Error:
+            pass
         self._migrate_schema()
         self._init_tables()
 

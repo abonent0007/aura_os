@@ -11,9 +11,8 @@ import random
 import re
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Optional, List, Dict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import httpx
 from bs4 import BeautifulSoup
@@ -387,31 +386,51 @@ class DuckDuckGoSearch:
             return []
     
     async def _search_html(self, query: str, max_results: int) -> List[dict]:
-        """Поиск через парсинг HTML DuckDuckGo"""
+        """Поиск через парсинг HTML DuckDuckGo (запасной путь).
+
+        DDG отдаёт результаты только с браузерным User-Agent; ссылки идут
+        через редирект //duckduckgo.com/l/?uddg=<url> — раскодируем.
+        Иногда вместо страницы отдаётся анти-бот заглушка (202) — тогда [].
+        """
         try:
+            from urllib.parse import parse_qs, unquote, urlparse
+
             url = "https://html.duckduckgo.com/html/"
-            data = {"q": query}
-            
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.post(url, data=data)
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+                ),
+                "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+            }
+
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                response = await client.post(url, data={"q": query}, headers=headers)
                 soup = BeautifulSoup(response.text, "lxml")
-            
+
             results = []
-            for item in soup.select(".result")[:max_results]:
-                title_elem = item.select_one(".result__title")
+            for item in soup.select(".result"):
+                link = item.select_one(".result__a") or item.select_one(".result__title a")
+                if link is None:
+                    continue
+                href = link.get("href", "")
+                if "uddg=" in href:
+                    qs = parse_qs(urlparse(href).query)
+                    decoded = unquote(qs.get("uddg", [""])[0])
+                    if decoded:
+                        href = decoded
                 snippet_elem = item.select_one(".result__snippet")
-                link_elem = item.select_one(".result__url")
-                
-                if title_elem:
-                    results.append({
-                        "title": title_elem.get_text(strip=True),
-                        "url": link_elem.get("href", "") if link_elem else "",
-                        "snippet": snippet_elem.get_text(strip=True) if snippet_elem else "",
-                        "source": "html"
-                    })
-            
+                results.append({
+                    "title": link.get_text(" ", strip=True),
+                    "url": href,
+                    "snippet": snippet_elem.get_text(" ", strip=True) if snippet_elem else "",
+                    "source": "html"
+                })
+                if len(results) >= max_results:
+                    break
+
             return results
-            
+
         except Exception as e:
             print(f"⚠️ HTML парсинг ошибка: {e}")
             return []
@@ -574,10 +593,13 @@ class WeatherService:
         else:
             params["exclude"] = "minutely,hourly,daily,alerts"
 
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(self.BASE_URL_3, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(self.BASE_URL_3, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            return f"Погода недоступна: {e}"
 
         if forecast_type == "week":
             return self._format_v3_forecast(data)
@@ -653,10 +675,13 @@ class WeatherService:
     async def _get_current_v25(self, city: str, forecast_type: str) -> str:
         params = {"q": city, "appid": self.api_key,
                    "units": self.config.weather_units, "lang": self.config.weather_lang}
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{self.BASE_URL_25}/weather", params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{self.BASE_URL_25}/weather", params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            return f"Погода недоступна: {e}"
 
         result = self._format_weather_v25(data)
 
@@ -692,10 +717,13 @@ class WeatherService:
     async def _fetch_forecast_v25(self, city: str) -> Optional[dict]:
         params = {"q": city, "appid": self.api_key,
                    "units": self.config.weather_units, "lang": self.config.weather_lang}
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{self.BASE_URL_25}/forecast", params=params)
-            resp.raise_for_status()
-            return resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{self.BASE_URL_25}/forecast", params=params)
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return None
 
     async def _fetch_forecast_tomorrow_v25(self, city: str) -> Optional[str]:
         data = await self._fetch_forecast_v25(city)
@@ -771,7 +799,7 @@ class SearchResultProcessor:
         self.processor = Agent(
             name="AURA_SearchProcessor",
             config=ag_config.OpenAIConfig(
-                model=agent_config.get("model", "deepseek-v4-pro"),
+                model=agent_config.get("model", "deepseek-flash"),
                 temperature=0.5,
                 max_tokens=1024,
                 api_key=os.getenv("DEEPSEEK_API_KEY", ""),

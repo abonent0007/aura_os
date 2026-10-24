@@ -1,0 +1,20 @@
+{
+  "name": "auras-audit",
+  "version": "1.0.0",
+  "author": "AURA",
+  "description": "Глубокий аудит скиллов Ауры (структура, manifest, синтаксис, @tools.tool) и её личная база знаний — то, что она сама находит интересным.",
+  "category": "tools",
+  "dependencies": [],
+  "python_version": ">=3.11",
+  "triggers": [
+    "проверь скиллы",
+    "аудит скиллов",
+    "проверь себя",
+    "запиши в базу знаний",
+    "что нового ты узнала"
+  ],
+  "permissions": [],
+  "auto_created": true,
+  "stability": "testing",
+  "created_at": "2026-09-12"
+}

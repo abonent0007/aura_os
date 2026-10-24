@@ -1,0 +1,13 @@
+{
+  "command": [
+    "C:/Users/User/AppData/Local/Programs/Python/Python311/python.exe",
+    "C:/aura_os/main.py"
+  ],
+  "cwd": "C:/aura_os",
+  "skills_dir": "C:/aura_os/skills",
+  "max_restarts": 3,
+  "restart_delay": 5,
+  "healthy_seconds": 30,
+  "rollback_on_failure": true,
+  "_comment": "Команда задана явно (найдена автоматически 12.09.2026). python.exe вместо pythonw.exe — так супервизор видит вывод и код возврата ядра. Для полного запуска: python supervisor.py run"
+}

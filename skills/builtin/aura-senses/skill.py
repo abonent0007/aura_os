@@ -121,7 +121,7 @@ def senses_take_screenshot(analyze: bool = False, question: str = "") -> str:
 
             q = question or "Опиши кратко что видно на этом скриншоте: какие программы открыты, что делает пользователь."
             resp = client.chat.completions.create(
-                model="deepseek-v4-pro",
+                model="deepseek-flash",
                 messages=[{
                     "role": "user",
                     "content": [
@@ -302,3 +302,62 @@ def senses_set_wallpaper(mood: str = "auto") -> str:
         return "❌ Lively Wallpaper CLI не найден"
     except Exception as e:
         return f"❌ Ошибка управления обоями: {e}"
+
+
+@tools.tool
+def senses_running_apps() -> str:
+    """
+    Просмотр запущенных приложений и окон пользователя.
+    Показывает чем занят пользователь: редактор кода, браузер, игра.
+    Это «зрение без скриншотов» — список активных программ.
+    """
+    global _PRIVACY_MODE
+    if _PRIVACY_MODE:
+        return "🔒 Приватный режим. Наблюдение отключено."
+
+    # 1. Видимые окна (через pygetwindow)
+    windows = []
+    try:
+        import pygetwindow as gw
+        for w in gw.getAllWindows():
+            if w.title and w.visible and not w.title.startswith("Windows"):
+                windows.append(w.title[:90])
+    except ImportError:
+        windows = []
+
+    # 2. Процессы с окнами (через psutil)
+    procs = []
+    try:
+        import psutil
+        for p in psutil.process_iter(["name", "memory_info"]):
+            name = p.info.get("name", "").lower()
+            if name.endswith((".exe", ".app")):
+                procs.append(name.replace(".exe", "").replace(".app", ""))
+    except ImportError:
+        procs = []
+
+    # Уникальные
+    unique_procs = sorted(set(procs))
+    unique_windows = windows[:15]
+
+    lines = ["🖥️ ЧЕМ ЗАНЯТ ПОЛЬЗОВАТЕЛЬ\n" + "━" * 28]
+    if unique_windows:
+        lines.append(f"Открытые окна ({len(unique_windows)}):")
+        lines.extend(f"  ▸ {t}" for t in unique_windows)
+    else:
+        lines.append("Окна не обнаружены (нет pygetwindow)")
+    lines.append("")
+    if unique_procs:
+        # Фильтруем только интересное: редакторы, браузеры, IDE
+        interesting = [p for p in unique_procs if any(k in p for k in
+            ["code", "pycharm", "idea", "cursor", "vscode", "sublime", "notepad",
+             "chrome", "firefox", "edge", "brave", "opera",
+             "terminal", "cmd", "powershell", "explorer",
+             "telegram", "discord", "steam", "obs", "photoshop", "figma",
+             "python", "node", "git"])]
+        lines.append(f"Запущенные процессы ({len(unique_procs)} всего, {len(interesting)} значимых):")
+        lines.extend(f"  • {p}" for p in interesting[:25])
+    else:
+        lines.append("Процессы не обнаружены (нет psutil)")
+
+    return "\n".join(lines)

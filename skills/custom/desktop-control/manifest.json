@@ -1,0 +1,14 @@
+{
+  "name": "desktop-control",
+  "version": "1.0.0",
+  "author": "AURA",
+  "description": "Руки Ауры: список окон, фокус и переключение, перемещение и размер, клики мышью, ввод текста (кириллица через буфер), горячие клавиши, подсветка областей. Только локально, с приватным режимом.",
+  "category": "tools",
+  "dependencies": ["pyautogui", "pygetwindow", "pillow"],
+  "python_version": ">=3.11",
+  "triggers": ["окно", "какие окна", "переключи окно", "кликни", "нажми", "мышь", "введи текст", "напечатай", "сверни окно", "разверни окно", "подсвети", "приватный режим"],
+  "permissions": ["screen_control", "input_control"],
+  "auto_created": true,
+  "stability": "testing",
+  "created_at": "2026-09-22"
+}

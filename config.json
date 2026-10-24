@@ -1,24 +1,33 @@
 {
   "_comment": "==================== AURA OS CONFIG ====================",
-  "_version": "4.1.0",
+  "_version": "4.4.0",
   "_note": "API ключи в .env файле, здесь только публичные настройки",
   "agent": {
-    "_comment": "Основной мозг — DeepSeek v4 Pro",
+    "_comment": "Основной мозг — DeepSeek V4.1 Flash (нативная мультимодальность, 2026-09-10)",
     "provider": "deepseek",
     "_providers": {
       "deepseek": "DEEPSEEK_API_KEY",
       "lmstudio": "LMSTUDIO_API_KEY (эксперимент)",
       "local": "OLLAMA_API_KEY (Ollama — эмбеддинги)"
     },
-    "model": "deepseek-v4-pro",
+    "model": "deepseek-flash",
     "temperature": 0.7,
     "max_tokens": 30000,
-    "base_url": "https://api.deepseek.com/v1"
+    "base_url": "https://api.deepseek.com/v1",
+    "default_result_limit": 2000,
+    "metrics_enabled": true,
+    "sort_tools_for_cache": true,
+    "tool_result_limits": {
+      "read_skill_file": 18000,
+      "project_read": 18000,
+      "list_skill_files": 5000,
+      "google_ai": 14000
+    }
   },
   "compactor": {
-    "_comment": "Сжатие диалогов — DeepSeek v4 Flash",
+    "_comment": "Сжатие диалогов — та же модель V4.1 Flash",
     "provider": "deepseek",
-    "model": "deepseek-v4-flash",
+    "model": "deepseek-flash",
     "temperature": 0.3,
     "max_tokens": 1024
   },
@@ -250,6 +259,7 @@
   },
   "monitoring": {
     "_comment": "Мониторинг стабильности",
+    "metrics_enabled": true,
     "check_interval_seconds": 60,
     "max_errors_per_minute": 5,
     "max_total_errors": 50,
@@ -267,5 +277,75 @@
     "include_birthdays": true,
     "include_news": true,
     "weather_city": "Moscow"
+  },
+  "pet_mode": {
+    "_comment": "Режим питомца: спонтанные мурлыканья, подмигивания, потягивания",
+    "enabled": true,
+    "min_interval_min": 15,
+    "max_interval_min": 45,
+    "activity_chance": 0.25,
+    "night_silence": true,
+    "night_hours": [
+      23,
+      7
+    ],
+    "_note": "Ночью (23:00-07:00) Аура спит. Мурлычет когда её хвалят."
+  },
+  "avatar": {
+    "_comment": "Плавающие Live2D-аватары",
+    "model": "mao",
+    "_models": [
+      "mao",
+      "shizuku",
+      "haru",
+      "hibiki",
+      "izumi"
+    ],
+    "companion": "off",
+    "_note": "model=mao — на рабочем столе (не поверх окон, прижата к углу). companion — парящее окно поверх окон (off/shizuku/haru/hibiki/izumi), выбор в меню трея."
+  },
+  "autonomy": {
+    "_comment": "Автономный наблюдательный цикл (по мотивам AIRI)",
+    "enabled": true,
+    "observe_interval_min": 5,
+    "work_streak_min": 45,
+    "min_interval_min": 20,
+    "max_interventions_per_hour": 2,
+    "night_hours": [
+      23,
+      7
+    ],
+    "_note": "Аура смотрит на экран (DeepSeek Vision), видит код, приносит новости ИИ (HN/Habr), предлагает идеи развлечений, напоминает из календаря. Ночью спит. Приватный режим отключает наблюдение.",
+    "tech_news_interval_hours": 3,
+    "fun_idea_interval_hours": 2,
+    "unfinished_thread_interval_hours": 4,
+    "reminders_enabled": true,
+    "max_shots": 5,
+    "vision_max_tokens": 100,
+    "reminder_check_sec": 300
+  },
+  "desktop_control": {
+    "_comment": "Руки Ауры: пауза между действиями и аварийный стоп",
+    "failsafe": true,
+    "pause_sec": 0.08
+  },
+  "database": {
+    "_comment": "SQLite: ожидание блокировок (WAL включён кодом)",
+    "busy_timeout_ms": 5000
+  },
+  "google_ai": {
+    "_comment": "Глубокий веб-синтез через Google AI Mode (helper + headed Chrome)",
+    "helper_path": "C:\\lib\\google-ai.py",
+    "cdp_port": 9222,
+    "timeout_sec": 180,
+    "max_chars": 14000
+  },
+  "whisper": {
+    "_comment": "Пороги шёпотов: тишина/утро/вечер и вероятности случайных",
+    "silence_hours": 3,
+    "morning_after_hours": 6,
+    "evening_after_hours": 4,
+    "random_chance": 0.15,
+    "quick_random_chance": 0.2
   }
 }

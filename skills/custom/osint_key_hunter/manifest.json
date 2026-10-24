@@ -5,7 +5,7 @@
   "description": "Автоматический охотник за API-ключами через GitHub Code Search. 16+ сервисов, шаблонный поиск, валидация, автосохранение.",
   "category": "tools",
   "dependencies": [],
-  "triggers": ["охота за ключами", "osint", "key hunter", "найди ключи", "hunt keys", "поиск api ключей"],
+  "triggers": ["osint"],
   "permissions": ["network"],
   "auto_created": true,
   "stability": "testing"

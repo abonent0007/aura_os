@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List
 from collections import defaultdict
 
 # Fix Windows console encoding for emoji
@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 from autogen.beta import Agent, config, MemoryStream, tools
 from database import EventCategory, MemoryTriggerSystem, AuraDatabase
 from system_prompt import SYSTEM_PROMPT
+from aura_seeds import SeedStore, format_style_block
+from config_manager import get as _cfg_get
 
 # ============================================================
 # 0. ИНИЦИАЛИЗАЦИЯ
@@ -411,6 +413,12 @@ def create_aura_tools(db: AuraDatabase):
             header = f"Файл: {skill_name}/{filename} ({size} символов)"
             if offset > 0:
                 header += f" [с позиции {offset}]"
+            # Подсказка: одноимённый проект в Программном цехе
+            if "custom" in skill_path.parts and (Path("skills/project") / skill_name).exists():
+                hint += (
+                    f"\n\nℹ️ В Программном цехе есть проект «{skill_name}» — "
+                    f"его файлы читай через project_read."
+                )
             return f"{header}\n\n{trunc}{hint}"
         except Exception as e:
             return f"Ошибка чтения: {e}"
@@ -418,27 +426,35 @@ def create_aura_tools(db: AuraDatabase):
     @tools.tool
     def edit_skill_file(skill_name: str, filename: str, content: str) -> str:
         """
-        Сохранить файл в папке skills/. Можно редактировать И builtin, И custom.
+        Сохранить файл в папке skills/. Можно редактировать builtin, custom и project.
         filename: 'skill.py', 'SKILL.md', 'manifest.json', 'README.md', 'data.json', '.env', ...
+        Для файлов программы из Программного цеха удобнее project_write.
         """
         if ".." in skill_name or ".." in filename or "/" in filename or "\\" in filename:
             return "Запрещено: недопустимый путь."
 
-        # Определяем где сохранять
+        # Определяем где сохранять: custom → builtin → project (иначе создаём в custom)
         skill_path = Path("skills/custom") / skill_name / filename
         if not skill_path.parent.exists():
-            # Может это builtin?
             builtin_path = Path("skills/builtin") / skill_name / filename
+            project_path = Path("skills/project") / skill_name / filename
             if builtin_path.parent.exists():
                 skill_path = builtin_path
-            elif not any(base in str(skill_path) for base in ("skills/builtin", "skills/custom", "skills/project", "skills\\")):
-                return "Запрещено: файл должен быть внутри skills/."
+            elif project_path.parent.exists():
+                skill_path = project_path
 
         skill_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             skill_path.write_text(content, encoding="utf-8")
             msg = f"Сохранено: {skill_name}/{filename} ({len(content)} символов)"
+
+            # Подсказка: одноимённый проект в Программном цехе
+            if "custom" in skill_path.parts and (Path("skills/project") / skill_name).exists():
+                msg += (
+                    f"\nℹ️ В Программном цехе есть проект «{skill_name}» — "
+                    f"его файлы правь через project_write/project_read."
+                )
 
             # Авто-перезагрузка если сохранили skill.py
             if filename == "skill.py" and _skill_manager_ref and _agent_ref:
@@ -458,6 +474,70 @@ def create_aura_tools(db: AuraDatabase):
             return msg
         except Exception as e:
             return f"Ошибка сохранения: {e}"
+
+    @tools.tool
+    def patch_skill_file(skill_name: str, filename: str, old_string: str, new_string: str, replace_all: bool = False) -> str:
+        """
+        Точечная правка файла в skills/ (скальпель): заменить old_string на new_string,
+        НЕ перезаписывая весь файл. Для больших файлов — используй это вместо edit_skill_file.
+        old_string должен встречаться ровно один раз (или укажи replace_all=True).
+        filename: 'skill.py', 'SKILL.md', 'manifest.json', 'README.md', 'data.json', ...
+        """
+        if ".." in skill_name or ".." in filename or "/" in filename or "\\" in filename:
+            return "Запрещено: недопустимый путь."
+
+        # Ищем файл: custom → builtin → project
+        target = None
+        for base in ("skills/custom", "skills/builtin", "skills/project"):
+            candidate = Path(base) / skill_name / filename
+            if candidate.exists():
+                target = candidate
+                break
+        if target is None:
+            return f"Файл не найден: {skill_name}/{filename}."
+
+        try:
+            original = target.read_text(encoding="utf-8")
+        except Exception as e:
+            return f"Ошибка чтения: {e}"
+
+        count = original.count(old_string)
+        if count == 0:
+            return "❌ old_string не найден в файле. Прочитай файл и уточни фрагмент (пробелы и отступы важны)."
+        if count > 1 and not replace_all:
+            return f"❌ old_string встречается {count} раз — добавь больше контекста, чтобы фрагмент был уникальным, или укажи replace_all=True."
+
+        updated = original.replace(old_string, new_string) if replace_all else original.replace(old_string, new_string, 1)
+
+        # Синтаксическая проверка для .py ДО записи
+        if filename.endswith(".py"):
+            try:
+                compile(updated, str(target), "exec")
+            except SyntaxError as e:
+                return f"❌ Правка отклонена — синтаксическая ошибка после замены: {e}"
+
+        try:
+            target.write_text(updated, encoding="utf-8")
+        except Exception as e:
+            return f"Ошибка сохранения: {e}"
+
+        msg = f"✅ Точечная правка: {skill_name}/{filename} (заменено {count if replace_all else 1} совпадений, {len(original)} → {len(updated)} символов)"
+
+        # Авто-перезагрузка если правили skill.py
+        if filename == "skill.py" and _skill_manager_ref and _agent_ref:
+            try:
+                info = _skill_manager_ref.load_skill_from_dir(target.parent)
+                if info and info.tools:
+                    _agent_ref.add_tools(info.tools)
+                    msg += f"\n✅ Скилл '{skill_name}' работает ({len(info.tools)} инструментов)"
+                elif info:
+                    msg += f"\n⚠️ Скилл '{skill_name}' загружен но 0 инструментов."
+                else:
+                    msg += f"\n❌ Скилл '{skill_name}' не загрузился. Проверь код."
+            except Exception as e:
+                msg += f"\n❌ Ошибка загрузки: {e}"
+
+        return msg
 
     @tools.tool
     def delete_skill_file(skill_name: str, filename: str = "") -> str:
@@ -493,7 +573,7 @@ def create_aura_tools(db: AuraDatabase):
         skill_name — имя скилла (опционально). Если не указан — список всех скиллов.
         """
         if skill_name:
-            for base in ("skills/builtin", "skills/custom", "skills/project"):
+            for base in ("skills/builtin", "skills/custom", "skills/project", "skills"):
                 path = Path(base) / skill_name
                 if path.exists():
                     files = []
@@ -516,7 +596,8 @@ def create_aura_tools(db: AuraDatabase):
                             try:
                                 m = json.loads(manifest.read_text(encoding="utf-8"))
                                 desc = f" — {m.get('description', '')[:60]}"
-                            except: pass
+                            except Exception:
+                                pass
                         lines.append(f"  [{label}] {d.name}{desc}")
         return "\n".join(lines)
 
@@ -531,7 +612,7 @@ def create_aura_tools(db: AuraDatabase):
         if not _skill_manager_ref:
             return "❌ SkillManager недоступен (консольный режим). Перезапусти с --all или --web."
         try:
-            _skill_manager_ref.load_all_skills()
+            _skill_manager_ref.load_all_skills(force_reload=True)
             skill_tools = _skill_manager_ref.get_all_tools()
             if _agent_ref and skill_tools:
                 # Убираем только skill-инструменты, ядро не трогаем
@@ -540,7 +621,12 @@ def create_aura_tools(db: AuraDatabase):
                 _agent_ref.add_tools(skill_tools)
             skills_list = _skill_manager_ref.skills
             loaded = len(skills_list)
-            return f"✅ Скиллы перезагружены: {loaded} скиллов, {len(skill_tools)} инструментов."
+            core_count = len(_agent_ref.tools) - len(skill_tools) if _agent_ref else 0
+            return (
+                f"✅ Скиллы перезагружены: {loaded} скиллов, "
+                f"{len(skill_tools)} инструментов скиллов "
+                f"(всего у агента: {core_count + len(skill_tools)}, включая ядро {core_count})."
+            )
         except Exception as e:
             return f"❌ Ошибка перезагрузки: {e}"
 
@@ -609,33 +695,76 @@ def create_aura_tools(db: AuraDatabase):
             "Ты — Skill Builder для AURA OS. Создаёшь Python-скиллы.\n\n"
             "## ИНСТРУКЦИИ ПО СОЗДАНИЮ СКИЛЛОВ\n"
             f"{skill_md}\n{readme_md}\n\n"
-            "## ФОРМАТ ОТВЕТА (ТОЛЬКО JSON, без markdown-блоков)\n"
+            "## ФОРМАТ ОТВЕТА (ТОЛЬКО JSON-объект, без markdown-обёрток)\n"
             '{"manifest": {...}, "skill_md": "...", "skill_py": "..."}\n\n'
-            "Double-check: strings escaped, no trailing commas, braces balanced.\n"
+            "ВАЖНО: skill_py — ПОЛНЫЙ код файла одной строкой. Переводы строк экранируй как \\n, "
+            "кавычки — как \\\". Не обрывай ответ, закрой все скобки и кавычки.\n"
         )
 
-        user_prompt = f"Создай скилл. Запрос: {request}"
-
-        def _call():
+        def _call(prompt: str) -> str:
             from plugins.aura_orchestrator.aura_orchestrator import call_deepseek
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                return loop.run_until_complete(call_deepseek(builder_prompt, user_prompt))
+                return loop.run_until_complete(
+                    call_deepseek(builder_prompt, prompt, max_tokens=16000,
+                                  temperature=0.3, json_mode=True)
+                )
             finally:
                 loop.close()
 
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            future = pool.submit(_call)
-            raw = future.result()
+        def _parse_json(raw: str):
+            """Парсит JSON с несколькими стратегиями восстановления."""
+            if not raw:
+                return None
+            text = re.sub(r'```json\s*|```', '', raw).strip()
 
-        # Парсим JSON
-        import re
-        raw = re.sub(r'```json\s*|```', '', raw).strip()
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            return "❌ Skill Builder вернул невалидный JSON. Попробуй ещё раз."
+            def _try(s):
+                # strict=False разрешает незаэкранированные переводы строк/табы в строках
+                try:
+                    return json.loads(s, strict=False)
+                except json.JSONDecodeError:
+                    return None
+
+            # 1. Прямой парсинг
+            data = _try(text)
+            if data is not None:
+                return data
+            # 2. Границы объекта
+            start, end = text.find("{"), text.rfind("}")
+            if start >= 0 and end > start:
+                candidate = text[start:end + 1]
+                data = _try(candidate)
+                if data is not None:
+                    return data
+                # 3. Убираем висячие запятые перед } и ]
+                data = _try(re.sub(r",\s*([}\]])", r"\1", candidate))
+                if data is not None:
+                    return data
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            raw = pool.submit(_call, f"Создай скилл. Запрос: {request}").result()
+
+            if raw.startswith("Ошибка обращения к DeepSeek"):
+                return f"❌ {raw}"
+
+            data = _parse_json(raw)
+
+            # Одна повторная попытка с фидбеком об ошибке
+            if data is None:
+                retry_prompt = (
+                    f"Создай скилл. Запрос: {request}\n\n"
+                    "ПРЕДЫДУЩИЙ ОТВЕТ БЫЛ НЕВАЛИДНЫМ JSON (обрезан или с ошибкой экранирования). "
+                    "Верни ТОЛЬКО валидный JSON-объект с полями manifest, skill_md, skill_py. "
+                    "Переводы строк внутри строк — как \\n, кавычки — как \\\". "
+                    "Убедись что ответ полный и все скобки закрыты."
+                )
+                raw = pool.submit(_call, retry_prompt).result()
+                data = _parse_json(raw)
+
+        if data is None:
+            return "❌ Skill Builder вернул невалидный JSON (2 попытки). Попробуй переформулировать запрос."
 
         manifest = data.get("manifest", {})
         skill_name = manifest.get("name", "unnamed")
@@ -645,9 +774,32 @@ def create_aura_tools(db: AuraDatabase):
         if not skill_py:
             return "❌ Skill Builder не сгенерировал код. Уточни запрос."
 
+        # Синтаксическая проверка ДО записи на диск
+        try:
+            compile(skill_py, f"{skill_name}/skill.py", "exec")
+        except SyntaxError as e:
+            return f"❌ Сгенерированный код с синтаксической ошибкой: {e}. Попробуй ещё раз."
+
+        # Дополняем обязательные поля манифеста
+        manifest.setdefault("version", "1.0.0")
+        manifest.setdefault("author", "AURA AI")
+        manifest.setdefault("description", request[:120])
+        manifest.setdefault("category", "tools")
+        manifest.setdefault("dependencies", [])
+        manifest.setdefault("triggers", [])
+        manifest.setdefault("permissions", [])
+        manifest.setdefault("auto_created", True)
+        manifest.setdefault("stability", "testing")
+        manifest["created_at"] = datetime.now().isoformat()
+        manifest["updated_at"] = datetime.now().isoformat()
+
         # Сохраняем файлы
         results = []
-        for fname, content in [("skill.py", skill_py), ("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)), ("SKILL.md", skill_md_content)]:
+        for fname, content in [
+            ("skill.py", skill_py),
+            ("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)),
+            ("SKILL.md", skill_md_content),
+        ]:
             path = Path(f"skills/custom/{skill_name}/{fname}")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
@@ -656,45 +808,17 @@ def create_aura_tools(db: AuraDatabase):
         # Авто-перезагрузка
         if _skill_manager_ref and _agent_ref:
             try:
-                from pathlib import Path as _P
-                info = _skill_manager_ref.load_skill_from_dir(_P(f"skills/custom/{skill_name}"))
+                info = _skill_manager_ref.load_skill_from_dir(Path(f"skills/custom/{skill_name}"))
                 if info and info.tools:
                     _agent_ref.add_tools(info.tools)
                     results.append(f"  ✅ Загружено {len(info.tools)} инструментов")
-                    results.append(f"\nСкилл '{skill_name}' готов! Вызови reload_skills() чтобы обновить.")
+                    results.append(f"\nСкилл '{skill_name}' готов и активен!")
                 else:
-                    results.append(f"  ⚠️ Загружен но 0 инструментов. Проверь skill.py на @tools.tool")
+                    results.append("  ⚠️ Загружен но 0 инструментов. Проверь skill.py на @tools.tool")
             except Exception as e:
                 results.append(f"  ❌ Ошибка загрузки: {e}")
 
         return f"🔨 СКИЛЛ '{skill_name}' СОЗДАН\n{'─' * 25}\n" + "\n".join(results)
-        """Анализирует последние диалоги и предлагает улучшения конфигурации и промптов."""
-        summaries = db.get_recent_summaries(days)
-        if not summaries:
-            return f"Not enough data ({days} days). Need more conversations."
-        total_msgs = sum(s.get("message_count", 0) for s in summaries)
-        all_topics = []
-        for s in summaries:
-            if s.get("key_topics"):
-                all_topics.extend(t.strip().lower() for t in s["key_topics"].split(","))
-        from collections import Counter
-        topic_counts = Counter(all_topics)
-        lines = [f"Trace Analysis ({days}d, {len(summaries)} sessions, {total_msgs} msgs):", ""]
-        lines.append("Top topics:")
-        for topic, count in topic_counts.most_common(5):
-            lines.append(f"  {topic} ({count}x)")
-        suggestions = []
-        if CONFIG["agent"]["temperature"] > 0.8:
-            suggestions.append("temperature > 0.8 — lower to 0.6-0.7")
-        if CONFIG["agent"]["max_tokens"] < 3000:
-            suggestions.append("max_tokens < 3000 — increase for longer answers")
-        if suggestions:
-            lines.append("\nSuggestions:")
-            for s in suggestions:
-                lines.append(f"  {s}")
-        if not suggestions:
-            lines.append("\nNo config issues found.")
-        return "\n".join(lines)
 
     @tools.tool
     def system_health() -> str:
@@ -726,8 +850,13 @@ def create_aura_tools(db: AuraDatabase):
             lines.append(f"Календарь: ✅ {events_today} событий сегодня, {reminders} напоминаний")
         except Exception as e:
             lines.append(f"Календарь: ❌ {e}")
-        tool_count = len(_agent_ref.tools) if _agent_ref else 0
-        lines.append(f"Инструментов: {tool_count}")
+        if _agent_ref:
+            total_tools = len(_agent_ref.tools)
+            skill_tools = len(_skill_manager_ref.get_all_tools()) if _skill_manager_ref else 0
+            core_tools = max(0, total_tools - skill_tools)
+            lines.append(f"Инструментов: {total_tools} (ядро {core_tools} + скиллы {skill_tools})")
+        else:
+            lines.append("Инструментов: 0")
         return "\n".join(lines)
 
     @tools.tool
@@ -858,6 +987,50 @@ def create_aura_tools(db: AuraDatabase):
             return f"Не удалось открыть браузер: {e}"
 
     @tools.tool
+    def analyze_image(file_path: str, question: str = "") -> str:
+        """
+        Посмотреть на изображение и описать его (зрение DeepSeek V4.1 Flash).
+        Поддерживает JPEG, PNG, GIF, WebP. Используй когда нужно разобрать картинку,
+        скриншот, фото, схему или прочитать текст с изображения.
+
+        Args:
+            file_path: путь к файлу изображения
+            question: что именно спросить про изображение (опционально)
+        """
+        import base64
+        from pathlib import Path as _P
+        try:
+            p = _P(file_path)
+            if not p.exists():
+                return f"Файл не найден: {file_path}"
+            if p.stat().st_size > 32 * 1024 * 1024:
+                return "Файл больше 32 МБ — DeepSeek не примет."
+            ext = p.suffix.lower()
+            mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                    "gif": "image/gif", "webp": "image/webp"}.get(ext.lstrip("."), "image/png")
+            b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
+            from openai import OpenAI
+            client = OpenAI(
+                api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+                base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+            )
+            q = question or "Опиши подробно что на этом изображении: объекты, текст, детали."
+            resp = client.chat.completions.create(
+                model="deepseek-flash",
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": q},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "auto"}}
+                    ]
+                }],
+                max_tokens=1000
+            )
+            return f"👁️ {p.name}:\n{resp.choices[0].message.content}"
+        except Exception as e:
+            return f"Не удалось посмотреть изображение: {e}"
+
+    @tools.tool
     def orchestrator_run(query: str, roles: str = "coordinator,researcher,developer") -> str:
         """
         Мультиперсонный анализ. Запускает несколько ИИ-персон параллельно, удаляет дубликаты, возвращает единый ответ.
@@ -934,9 +1107,9 @@ def create_aura_tools(db: AuraDatabase):
     add_birthday_reminder, search_calendar, complete_task_by_name,
     reschedule_task, get_birthdays_list, check_due_reminders,
     remember_fact,         get_user_context,
-    open_url, orchestrator_run, doubt_check,
+    open_url, orchestrator_run, doubt_check, analyze_image,
     get_weather, get_weather_forecast, get_weather_by_coords, search_web, search_news,
-    read_skill_file, edit_skill_file, delete_skill_file, list_skill_files,
+    read_skill_file, edit_skill_file, patch_skill_file, delete_skill_file, list_skill_files,
     reload_skills,
     trace_stats, trace_search, learn_from_traces, system_health,
     build_skill,
@@ -1115,8 +1288,14 @@ class AuraAgent:
         self.auto_compress_threshold = CONFIG["memory"]["auto_compress_after_messages"]
         self._compressed_history = ""
 
+        # Чувство времени: помним когда он писал в прошлый раз
+        self._last_message_time = None
+
         # Инициализация души
         self._init_soul()
+        # Семена — внешняя память взаимодействий (мягкий дрейф манеры)
+        self.seeds = SeedStore(self.soul_conn)
+        self._relief_cache = None
         restored = self._restore_context()
         if restored:
             print("[soul] Контекст восстановлен после перезагрузки")
@@ -1449,6 +1628,14 @@ class AuraAgent:
         if event_type == "praise":
             h = min(1.0, h + intensity * 2)
             a = max(0.0, a - intensity)
+            # Реакция питомца: мурлыканье на похвалу
+            try:
+                from plugins.aura_tray import get_tray
+                tray = get_tray()
+                if tray:
+                    tray.pet_reaction("praise")
+            except Exception:
+                pass
         elif event_type == "silence":
             a = min(1.0, a + intensity)
             h = max(0.0, h - intensity * 0.5)
@@ -1480,9 +1667,43 @@ class AuraAgent:
             state["mood"] = "happy"
         elif any(w in txt for w in ["грустно", "плохо", "тоска", "😢"]):
             state["mood"] = "sad"
-        if len(text) < 10 or text in ["ок", "да", "нет", "+", "ага", "ясно"]:
+        # Короткие ответы = занят, но приветствия не считаем
+        greetings = ["привет", "здравствуй", "хай", "доброе утро", "добрый вечер", "спокойной ночи"]
+        short_reply = text.strip() in ["ок", "да", "нет", "+", "ага", "ясно", "хм", "угу"]
+        if (short_reply or (len(text) < 10 and not any(g in txt for g in greetings))):
             state["busy"] = True
         return state
+
+    def _remember_user_tone(self, state: dict):
+        """Запомнить тон пользователя — не только факты, но и как он говорил."""
+        mood = state.get("mood", "neutral")
+        fatigue = state.get("fatigue", 0.0)
+        busy = state.get("busy", False)
+        if mood == "neutral" and fatigue == 0.0 and not busy:
+            return
+        parts = []
+        if mood == "happy":
+            parts.append("радостный")
+        elif mood == "sad":
+            parts.append("грустный")
+        if fatigue > 0:
+            parts.append(f"уставший ({fatigue:.1f})")
+        if busy:
+            parts.append("занят, отвечает коротко")
+        tone = ", ".join(parts)
+        self._write_soul_entry(f"Он был {tone}", mood, "user_tone")
+
+    def _get_recent_tone(self) -> str:
+        """Недавний тон пользователя из души (как он звучал, не что говорил)."""
+        try:
+            rows = self.soul_conn.execute(
+                "SELECT thought FROM thoughts WHERE event_type='user_tone' ORDER BY id DESC LIMIT 2"
+            ).fetchall()
+            if rows:
+                return "; ".join(r["thought"] for r in rows)
+        except Exception:
+            pass
+        return ""
 
     def _save_context(self):
         if not hasattr(self, 'soul_conn'):
@@ -1552,7 +1773,9 @@ class AuraAgent:
 
         # Инструменты
         lines.append(f"\n[Инструменты агента]")
-        lines.append(f"  Всего: {len(self.agent.tools)}")
+        _skill_tools = len(_skill_manager_ref.get_all_tools()) if _skill_manager_ref else 0
+        _total = len(self.agent.tools)
+        lines.append(f"  Всего: {_total} (ядро {max(0, _total - _skill_tools)} + скиллы {_skill_tools})")
         tool_names = [f.__name__ for f in self.agent.tools]
         lines.append(f"  Список: {', '.join(tool_names[:12])}...")
 
@@ -1616,17 +1839,48 @@ class AuraAgent:
             print(f"⚠️ Ошибка инициализации Google Calendar: {e}")
             self.google_sync = None
 
-    async def process(self, text: str, user_id: str = "default") -> str:
+    async def process(self, text: str, user_id: str = "default", images: list = None) -> str:
         """
         Обработка запроса с умным поиском по истории.
+        images — список data-URL картинок (vision через deepseek-flash).
         """
+        import time as _time
+        _t0 = _time.perf_counter()
+        _t_ctx = _t_mem = _t_llm = _t0
+
         # Ленивая инициализация шедулеров при первом вызове
         self._ensure_schedulers()
         # 1. Анализ триггеров
         trigger_result = self.trigger_system.analyze_query(text)
 
+        # 1.5. Тон пользователя — не только факты, но и как он говорил
+        try:
+            self._remember_user_tone(self._detect_user_state(text))
+        except Exception:
+            pass
+
+        # 1.6. Чувство времени — заметить паузу между сообщениями
+        gap_note = ""
+        try:
+            from datetime import datetime as _dt
+            now = _dt.now()
+            if self._last_message_time:
+                gap_min = (now - self._last_message_time).total_seconds() / 60
+                if gap_min > 180:  # больше 3 часов тишины
+                    hours = gap_min / 60
+                    if hours < 24:
+                        gap_note = f"[Он не писал {hours:.0f} ч. Заметь это, спроси как он — без упрёка.]"
+                    else:
+                        gap_note = f"[Он пропал на {hours/24:.0f} дн. Обрадуйся возвращению.]"
+            self._last_message_time = now
+        except Exception:
+            pass
+
         # 2. Формируем префикс контекста
         context_prefix = self._build_context_prefix()
+        if gap_note:
+            context_prefix = gap_note + "\n" + context_prefix
+        _t_ctx = _time.perf_counter()
 
         # 3. Если сработал триггер памяти — ищем ДО основного запроса
         memory_context = ""
@@ -1644,6 +1898,8 @@ class AuraAgent:
                     text, raw_results
                 )
                 context_prefix = f"[Найдено в истории]\n{memory_context}\n\n" + context_prefix
+
+        _t_mem = _time.perf_counter()
 
         # 4. Автосжатие истории при переполнении (sliding window + compactor)
         HISTORY_COMPRESS_THRESHOLD = 12
@@ -1675,8 +1931,10 @@ class AuraAgent:
             stream=self.memory_stream,
             variables={"user_id": user_id},
             context=context_prefix,
-            compressed_history=compressed
+            compressed_history=compressed,
+            images=images
         )
+        _t_llm = _time.perf_counter()
         await self.memory_stream.history.add({"role": "assistant", "content": response.content})
 
         # 6. Сохраняем ТОЛЬКО сообщение пользователя в сессию (для сжатия)
@@ -1686,6 +1944,20 @@ class AuraAgent:
         # 7. Автосжатие сессии при превышении порога
         if self.message_count >= self.auto_compress_threshold:
             await self.compress_and_learn()
+
+        if _cfg_get("monitoring.metrics_enabled", True):
+            try:
+                from loguru import logger
+                logger.info(
+                    "pipeline: context={:.0f}ms memory={:.0f}ms llm={:.0f}ms total={:.0f}ms | in={} out={}",
+                    (_t_ctx - _t0) * 1000,
+                    (_t_mem - _t_ctx) * 1000,
+                    (_t_llm - _t_mem) * 1000,
+                    (_time.perf_counter() - _t0) * 1000,
+                    len(text or ""), len(response.content or ""),
+                )
+            except Exception:
+                pass
 
         return response.content
 
@@ -1767,6 +2039,11 @@ class AuraAgent:
         if proactive:
             parts.append(proactive)
 
+        # Тон прошлых разговоров — как он звучал, не что говорил
+        tone = self._get_recent_tone()
+        if tone:
+            parts.append(f"[Его недавний тон: {tone}. Подстройся под него, спроси как он.]")
+
         # Факты о пользователе
         facts = self.db.get_relevant_facts()
         if facts:
@@ -1781,9 +2058,26 @@ class AuraAgent:
             for r in reminders[:3]:
                 parts.append(f"- {r.get('emoji', '')} {r['title']} ({r['event_date']})")
 
+        # Внутренний настрой — мягкий дрейф манеры (семена)
+        try:
+            style = self._get_style_block()
+            if style:
+                parts.append(style)
+        except Exception:
+            pass
+
         if parts:
             return "\n".join(parts) + "\n\n"
         return ""
+
+    def _get_style_block(self) -> str:
+        """Мягкий блок настроя из семян (кэшируется до следующего семени)."""
+        if getattr(self, "_relief_cache", None) is None:
+            try:
+                self._relief_cache = self.seeds.relief()
+            except Exception:
+                return ""
+        return format_style_block(self._relief_cache)
 
     def _format_search_results(self, results: list[dict]) -> str:
         """Форматирование результатов поиска для нейро-обработки"""
@@ -1879,6 +2173,13 @@ class AuraAgent:
         except Exception as e:
             print(f"⚠️ Ошибка сжатия: {e}")
 
+        # Рефлексия → семя: внешняя память взаимодействий (не чаще раза в 20 мин)
+        try:
+            if self.seeds.last_seed_age_minutes() >= 20:
+                await self._create_session_seed(user_text, today)
+        except Exception as e:
+            print(f"[seeds] рефлексия пропущена: {e}")
+
         self.message_count = 0
         self.session_messages = []
 
@@ -1890,6 +2191,60 @@ class AuraAgent:
             await self.memory_stream.history.set([summary_result.content])
         except Exception:
             await self.memory_stream.history.clear()
+
+    async def _create_session_seed(self, user_text: str, date_key: str):
+        """Изолированная рефлексия: короткие маркеры → семя.
+
+        Выполняется в отдельном вызове компактора, Аура этот шаг не видит.
+        Маркеры — 1-2 слова, не предложения. Провал парсинга — тихо пропускаем.
+        """
+        prompt = (
+            "Ты — внутренний рефлектор. Ответь ТОЛЬКО JSON, коротко, без пояснений.\n"
+            "{\n"
+            '  "touched": ["1-3 маркера: какие темы были задеты (1-2 слова каждый)"],\n'
+            '  "resonated": ["точки соприкосновения (1-2 слова)"],\n'
+            '  "unresolved": ["что осталось открытым (1-2 слова)"],\n'
+            '  "gradient": ["куда тянуло, но не дошли (1-2 слова)"],\n'
+            '  "weight": 0.6\n'
+            "}\n"
+            "Правила: только маркеры из 1-2 слов, не предложения; каждый раз новые; "
+            "никаких слов «резонатор», «семя», «режим», «навык».\n\n"
+            f"Сообщения пользователя:\n{user_text[:2500]}"
+        )
+        result = await self.compactor.ask(prompt)
+        content = (result.content or "").strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1]
+            if content.endswith("```"):
+                content = content[:-3]
+        try:
+            data = json.loads(content)
+        except Exception:
+            return  # битый JSON — тихо пропускаем, семя не создаём
+
+        def _markers(key):
+            out = []
+            for m in (data.get(key) or [])[:5]:
+                m = str(m).strip().lower()
+                if m and len(m.split()) <= 2:
+                    out.append(m[:40])
+            return out
+
+        try:
+            weight = max(0.0, min(1.0, float(data.get("weight", 0.5))))
+        except Exception:
+            weight = 0.5
+
+        sid = self.seeds.create_seed(
+            touched=_markers("touched"),
+            resonated=_markers("resonated"),
+            unresolved=_markers("unresolved"),
+            gradient=_markers("gradient"),
+            weight=weight,
+            date_key=date_key,
+        )
+        self._relief_cache = None
+        print(f"[seeds] семя создано: {sid}")
 
     async def _update_embeddings(self, memory_id: int, text: str):
         """Генерация эмбеддингов через Ollama (опционально)"""

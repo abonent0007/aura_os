@@ -81,6 +81,34 @@ project/
 
 **Когда Аура создаёт проект** — она автоматически создаёт `AGENTS.md` с базовой информацией. Ты можешь расширить его сам.
 
+## Глобальные ключи Ауры
+
+Проекты могут использовать **глобальные ключи ядра AURA OS** из `C:\aura_os\.env`,
+если они необходимы (DEEPSEEK_API_KEY, TELEGRAM_BOT_TOKEN, OPENWEATHERMAP_API_KEY и др.).
+Отдельно прописывать их в проекте не нужно.
+
+**Рекомендуемый способ** — в конфиге проекта указывать `${VAR}`, а в коде
+подхватывать `.env` ядра (путь от папки проекта: `../../..` → `C:\aura_os\.env`):
+
+```python
+# Подхватить глобальные ключи Ауры (если ещё не в окружении)
+def _load_global_env() -> None:
+    env_path = Path(__file__).resolve().parents[N] / ".env"  # → C:\aura_os\.env
+    for line in env_path.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+```
+
+Затем раскрывать `${VAR}` в строках конфига через `os.environ.get(...)`.
+
+**Эталонная реализация:** `skills/project/freelance-hunter/freelance_hunter/config.py`
+(функции `_load_global_env()` и `_expand_deep()`).
+
+Свои собственные ключи проект хранит в локальном `.env` (не коммитить) —
+локальные значения имеют приоритет над глобальными.
+
 ## Как использовать
 
 1. Создай подпапку с именем проекта

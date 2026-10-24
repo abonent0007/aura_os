@@ -13,11 +13,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from openai import AsyncOpenAI
+import httpx
 from sentence_transformers import SentenceTransformer
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-MODEL_NAME = "deepseek-v4-pro"
+MODEL_NAME = "deepseek-flash"
 SIMILARITY_THRESHOLD = 0.92
 TEMP_DIR = Path(os.getenv("TEMP", "/tmp")) / "aura_orchestrator"
 
@@ -28,7 +29,15 @@ dedup_model = None
 def _get_client():
     global client
     if client is None:
-        client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+        client = AsyncOpenAI(
+            api_key=DEEPSEEK_API_KEY,
+            base_url=DEEPSEEK_BASE_URL,
+            # Длинные генерации (build_skill ~16K токенов): таймаут щедрее,
+            # но не дефолтные 600с — иначе зависший запрос держит 10 минут.
+            # connect=10с — флапы связи падают быстро и уходят в повтор.
+            timeout=httpx.Timeout(300.0, connect=10.0),
+            max_retries=3,
+        )
     return client
 
 
@@ -90,16 +99,24 @@ def write_temp_file(filename: str, content: str) -> Path:
     return file_path
 
 
-async def call_deepseek(system_prompt: str, user_message: str) -> str:
-    response = await _get_client().chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ],
-        temperature=0.7,
-        max_tokens=4096
-    )
+async def call_deepseek(system_prompt: str, user_message: str, max_tokens: int = 4096,
+                        temperature: float = 0.7, json_mode: bool = False) -> str:
+    kwargs = {}
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    try:
+        response = await _get_client().chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs
+        )
+    except Exception as e:
+        return f"Ошибка обращения к DeepSeek: {e}"
     return response.choices[0].message.content
 
 
