@@ -53,3 +53,4 @@ skills/**/session_log.json
 .opencode/
 .playwright-mcp/
 .pytest_cache/
+.venv-tts/

@@ -1932,8 +1932,9 @@ class AuraAgent:
             except Exception as e:
                 print(f"[context] Compression failed: {e}")
 
-        # 5. Основной запрос — context отдельно для prompt caching
-        await self.memory_stream.history.add({"role": "user", "content": text})
+        # 5. Основной запрос — context отдельно для prompt caching.
+        # Сообщение пользователя НЕ кладём в историю заранее: _build_messages
+        # добавляет его сам — иначе модель видит реплику дважды.
         compressed = self._compressed_history
         self._compressed_history = ""  # сброс ДО вызова, чтобы не утекал при ошибке
         response = await self.agent.ask(
@@ -1945,6 +1946,7 @@ class AuraAgent:
             images=images
         )
         _t_llm = _time.perf_counter()
+        await self.memory_stream.history.add({"role": "user", "content": text})
         await self.memory_stream.history.add({"role": "assistant", "content": response.content})
 
         # 6. Сохраняем ТОЛЬКО сообщение пользователя в сессию (для сжатия)

@@ -803,7 +803,13 @@ class Agent:
 
         # 3. История — последние 6 сообщений (3 вопроса + 3 ответа)
         if stream and stream.history._messages:
-            for m in stream.history._messages[-6:]:
+            hist = stream.history._messages[-6:]
+            # Защита от дубля: если вызывающий уже положил текущий текст в историю,
+            # не отправляем его второй раз (модель начинала видеть реплику дважды).
+            if (hist and hist[-1].get("role") == "user"
+                    and hist[-1].get("content") == text):
+                hist = hist[:-1]
+            for m in hist:
                 # Фильтруем: пропускаем большие tool-результаты
                 if m.get("role") == "tool" and len(m.get("content", "")) > 500:
                     m = dict(m)
