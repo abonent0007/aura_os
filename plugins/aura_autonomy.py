@@ -170,28 +170,16 @@ class AutonomousObserver:
             return {"desc": "", "error": str(e)}
 
     def _analyze_with_vision(self, path: Path) -> str:
-        """Короткое описание экрана через DeepSeek Vision."""
+        """Короткое описание экрана через DeepSeek Vision (единый бюджет из config)."""
         try:
-            from openai import OpenAI
+            from utils import vision_describe
             img_data = base64.b64encode(path.read_bytes()).decode("utf-8")
-            client = OpenAI(
-                api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-                base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+            text, _meta = vision_describe(
+                img_data, "image/png",
+                "Одним предложением опиши что делает пользователь: какая программа открыта, "
+                "чем он занят. Максимум 15 слов. Только факты.",
             )
-            resp = client.chat.completions.create(
-                model=str(cfg_get("agent.model", "deepseek-flash")),
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text":
-                            "Одним предложением опиши что делает пользователь: какая программа открыта, "
-                            "чем он занят. Максимум 15 слов. Только факты."},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_data}"}}
-                    ]
-                }],
-                max_tokens=int(cfg_get("autonomy.vision_max_tokens", 100))
-            )
-            return resp.choices[0].message.content.strip()
+            return text or ""
         except Exception:
             return ""
 

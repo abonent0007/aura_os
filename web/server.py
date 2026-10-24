@@ -172,7 +172,7 @@ async def index(request: Request):
         name="index.html",
         context={
             "app_name": "AURA OS",
-            "version": "4.5.0",
+            "version": "4.5.1",
             "port": PORT,
             "tailscale_ip": tailscale_ip,
             "tailscale_hostname": TAILSCALE_HOSTNAME,
@@ -983,26 +983,95 @@ def init_web_server(aura_agent, skill_manager, rollback_manager, system_monitor,
     add_log("info", "Веб-сервер инициализирован", "system")
 
 def start_web_server(host: str = None, port: int = None):
-    """Запуск веб-сервера"""
+    """Запуск веб-сервера с супервизором.
+
+    Windows: asyncio Proactor может уронить accept-цикл (WinError 64) — слушающий
+    сокет умирает, а uvicorn продолжает работать. Поэтому:
+      • watchdog проверяет /api/health и просит uvicorn завершиться, если сервер
+        перестал слушать (3 промаха подряд);
+      • внешний цикл перезапускает сервер; исключения ловятся с backoff.
+    Состояние ядра (agent/db) живёт в этом же процессе и не теряется.
+    """
+    import time as _time
+    import threading
+    import urllib.request
+
     h = host or HOST
     p = port or PORT
-    
+
     print(f"\n🌐 Веб-интерфейс AURA OS:")
     print(f"   Локально:  http://localhost:{p}")
-    
+
     tailscale_ip = get_tailscale_ip()
     if tailscale_ip and TAILSCALE_ENABLED:
         print(f"   Tailscale: http://{TAILSCALE_HOSTNAME}:{p}")
         print(f"   Tailscale: http://{tailscale_ip}:{p}")
-    
+
     print()
-    
-    uvicorn.run(
-        app,
-        host=h,
-        port=p,
-        log_level="info"
-    )
+
+    delay = 2.0
+    attempts = 0
+    while True:
+        attempts += 1
+        server = uvicorn.Server(uvicorn.Config(app, host=h, port=p, log_level="info"))
+        restart = {"requested": False}
+        stop = threading.Event()
+
+        def _watchdog(srv=server, flag=restart, ev=stop, port=p):
+            fails = 0
+            while not ev.wait(10.0):
+                healthy = False
+                try:
+                    with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/api/health", timeout=3
+                    ) as resp:
+                        healthy = (resp.status == 200)
+                except Exception:
+                    healthy = False
+                if healthy:
+                    fails = 0
+                    continue
+                fails += 1
+                if fails >= 3:
+                    flag["requested"] = True
+                    try:
+                        from loguru import logger
+                        logger.error("web: health-check молчит 30с — перезапускаю uvicorn")
+                    except Exception:
+                        pass
+                    srv.should_exit = True
+                    return
+
+        threading.Thread(target=_watchdog, daemon=True).start()
+        try:
+            server.run()
+        except Exception as exc:
+            try:
+                from loguru import logger
+                logger.error("web: crash {}: {} — перезапуск через {:.0f}с",
+                             type(exc).__name__, exc, delay)
+            except Exception:
+                pass
+            print(f"[web] crash: {type(exc).__name__}: {exc} -> restart in {delay:.0f}s")
+            _time.sleep(delay)
+            delay = min(delay * 2, 30.0)
+            continue
+        except SystemExit:
+            # bind-ошибка (порт занят) или штатный exit: даём шанс освободиться
+            if attempts >= 5:
+                print("[web] uvicorn exited (SystemExit); supervisor stops")
+                break
+            _time.sleep(delay)
+            delay = min(delay * 2, 30.0)
+            continue
+        finally:
+            stop.set()
+
+        if restart["requested"]:
+            delay = 2.0
+            _time.sleep(2.0)
+            continue
+        break  # штатная остановка сервера
 
 
 if __name__ == "__main__":

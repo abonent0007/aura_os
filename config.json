@@ -1,6 +1,6 @@
 {
   "_comment": "==================== AURA OS CONFIG ====================",
-  "_version": "4.5.0",
+  "_version": "4.5.1",
   "_note": "API ключи в .env файле, здесь только публичные настройки",
   "agent": {
     "_comment": "Основной мозг — DeepSeek V4.1 Flash (нативная мультимодальность, 2026-09-10)",
@@ -330,8 +330,12 @@
     "unfinished_thread_interval_hours": 4,
     "reminders_enabled": true,
     "max_shots": 5,
-    "vision_max_tokens": 100,
     "reminder_check_sec": 300
+  },
+  "vision": {
+    "_comment": "DeepSeek Vision: бюджет токенов (reasoning-модель тратит их и на размышления)",
+    "max_tokens": 3000,
+    "retry_max_tokens": 5000
   },
   "desktop_control": {
     "_comment": "Руки Ауры: пауза между действиями и аварийный стоп",

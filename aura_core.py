@@ -1009,24 +1009,15 @@ def create_aura_tools(db: AuraDatabase):
             mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
                     "gif": "image/gif", "webp": "image/webp"}.get(ext.lstrip("."), "image/png")
             b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
-            from openai import OpenAI
-            client = OpenAI(
-                api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-                base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+            from utils import vision_describe
+            text, _meta = vision_describe(
+                b64, mime,
+                question or "Опиши подробно что на этом изображении: объекты, текст, детали.",
             )
-            q = question or "Опиши подробно что на этом изображении: объекты, текст, детали."
-            resp = client.chat.completions.create(
-                model="deepseek-flash",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": q},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "auto"}}
-                    ]
-                }],
-                max_tokens=1000
-            )
-            return f"👁️ {p.name}:\n{resp.choices[0].message.content}"
+            if not text:
+                return (f"👁️ {p.name}:\n⚠️ Модель не успела сформулировать описание "
+                        f"(бюджет reasoning). Попробуй ещё раз.")
+            return f"👁️ {p.name}:\n{text}"
         except Exception as e:
             return f"Не удалось посмотреть изображение: {e}"
 

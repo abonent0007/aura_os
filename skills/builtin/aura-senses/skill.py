@@ -102,37 +102,23 @@ def senses_take_screenshot(analyze: bool = False, question: str = "") -> str:
     if windows:
         lines.append(f"Активных окон: {len(windows)}")
         lines.extend(windows[:8])
-    lines.append(f"Файл: {path.name}")
+    lines.append(f"Файл: {path}")
 
-    # AI-анализ через DeepSeek Vision
+    # AI-анализ через DeepSeek Vision (единый бюджет из config, reasoning-safe)
     if analyze and path:
         try:
             import base64
-            from openai import OpenAI
+            from utils import vision_describe
 
-            # Читаем и кодируем скриншот
             img_data = base64.b64encode(path.read_bytes()).decode("utf-8")
-            mime = "image/png"
-
-            client = OpenAI(
-                api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
-                base_url="https://api.deepseek.com/v1"
+            text, _meta = vision_describe(
+                img_data, "image/png",
+                question or "Опиши кратко что видно на этом скриншоте: какие программы открыты, что делает пользователь.",
             )
-
-            q = question or "Опиши кратко что видно на этом скриншоте: какие программы открыты, что делает пользователь."
-            resp = client.chat.completions.create(
-                model="deepseek-flash",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": q},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_data}"}}
-                    ]
-                }],
-                max_tokens=500
-            )
-            analysis = resp.choices[0].message.content
-            lines.append(f"\n🤖 АНАЛИЗ DeepSeek Vision:\n{analysis}")
+            if text:
+                lines.append(f"\n🤖 АНАЛИЗ DeepSeek Vision:\n{text}")
+            else:
+                lines.append("\n⚠️ Анализ не дал текста (reasoning съел бюджет) — попробуй ещё раз.")
         except Exception as e:
             lines.append(f"\n⚠️ Анализ не выполнен: {e}")
 
