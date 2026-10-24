@@ -1,4 +1,9 @@
-# AURA OS v4.11.0
+# AURA OS v4.11.1
+
+## Changelog v4.11.1 — STT-логи
+
+- В лог пишется `stt: engine=faster_whisper model=... took=...ms chars=... text=...` и warning при fallback на Vosk.
+- Тесты: 92.
 
 ## Changelog v4.11.0 — Уши: faster-whisper вместо Vosk
 

@@ -12,6 +12,7 @@ import os
 import io
 import tempfile
 import asyncio
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Literal
@@ -126,6 +127,7 @@ class SpeechToText:
     def _fw_transcribe_sync(self, file_path: str) -> str:
         """Синхронная расшифровка (вызывается из потока)."""
         model = self._get_fw_model()
+        t0 = time.perf_counter()
         segments, _info = model.transcribe(
             file_path,
             language="ru",
@@ -133,7 +135,19 @@ class SpeechToText:
             beam_size=1,
             condition_on_previous_text=False,
         )
-        return " ".join(s.text.strip() for s in segments).strip()
+        text = " ".join(s.text.strip() for s in segments).strip()
+        try:
+            from loguru import logger
+            logger.info(
+                "stt: engine=faster_whisper model={} took={}ms chars={} text={!r}",
+                Path(self.fw_model_path).name,
+                int((time.perf_counter() - t0) * 1000),
+                len(text),
+                text[:140],
+            )
+        except Exception:
+            pass
+        return text
     
     def _init_google(self):
         try:
@@ -174,6 +188,11 @@ class SpeechToText:
                 return await asyncio.to_thread(self._fw_transcribe_sync, file_path)
             except Exception as e:
                 print(f"[STT] faster-whisper failed ({e}), fallback to Vosk")
+                try:
+                    from loguru import logger
+                    logger.warning("stt: faster-whisper failed ({}), fallback to Vosk", e)
+                except Exception:
+                    pass
                 if self.vosk_model is None:
                     self._init_vosk()
                 if self.vosk_model:
