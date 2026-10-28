@@ -1,4 +1,15 @@
-# AURA OS v4.14.0
+# AURA OS v4.15.0
+
+## Changelog v4.15.0 — RSI, этап 2: мутации, песочница, оценка (dry-run)
+
+Ветка `feature/rsi-stage2`. Ничего не применяется автоматически.
+
+- **M3 MutationEngine** (`aura/rsi/mutation.py`): только whitelist, unified diff, лимит `max_diff_lines=200`, отказ на пустой дифф и секции JSON (v1). Кандидат → `aura/rsi/candidates/<mut_id>/{patch.diff,meta.json}`. Патчи `system_prompt.py` помечаются `persona=true, auto_allowed=false`.
+- **M4 SandboxRunner** (`aura/rsi/sandbox.py`): копия репозитория без `models/logs/.git/.venv`, проверка путей патча, `git apply`, `pytest`, таймаут. Реальный репозиторий не трогается.
+- **M5 Evaluator** (`aura/rsi/evaluator.py`): тесты, размер диффа, recall-порог ε=2% к baseline.
+- **CLI** `tools/rsi_dry_run.py`: M3 → M4 → M5 без применения.
+- Демо: патч `system_prompt.py` → **123 теста** в песочнице, 0 падений, вердикт `passes`.
+- Тесты: **123** (+8).
 
 ## Changelog v4.14.0 — Непрерывность диалога, темы, сжатие, зрение
 

@@ -28,6 +28,7 @@
     "max_iterations_per_day": 3,
     "max_mutations_per_iteration": 5,
     "max_diff_lines": 200,
-    "failure_threshold": 3
+    "failure_threshold": 3,
+    "epsilon": 0.02
   }
 }

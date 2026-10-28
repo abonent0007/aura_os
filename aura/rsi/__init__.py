@@ -5,7 +5,10 @@
 Ничего в поведении Ауры не меняется, мутации не применяются.
 """
 from .config import load_config, rsi_paths
+from .evaluator import Evaluator
+from .mutation import MutationEngine, MutationError
 from .reflect import ReflectionEngine, ReflectionError
+from .sandbox import SandboxRunner
 from .trace import TraceLogger
 from .wiki import ExperienceWiki
 
@@ -14,6 +17,10 @@ __all__ = [
     "ReflectionEngine",
     "ReflectionError",
     "ExperienceWiki",
+    "MutationEngine",
+    "MutationError",
+    "SandboxRunner",
+    "Evaluator",
     "load_config",
     "rsi_paths",
 ]
