@@ -63,3 +63,4 @@ aura/rsi/eval/private/
 aura/rsi/history.jsonl
 skills/.auras_backups/
 *.bak
+aura/rsi/wiki/

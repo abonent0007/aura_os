@@ -1,4 +1,16 @@
-# AURA OS v4.12.1
+# AURA OS v4.13.0
+
+## Changelog v4.13.0 — RSI, этап 1: опыт, рефлексия, вики
+
+Первый этап контура рекурсивного самоулучшения (RSI). Только наблюдение:
+поведение Ауры не меняется, мутации не применяются.
+
+- **M1 Trace Logger** (`aura/rsi/trace.py`): JSONL-трейсы сессий (`task`, `tool_result`, `error`, `final_outcome`) с `event_id`; ротация по размеру. Пишутся локально и исключены из git.
+- **M2 Reflection Engine** (`aura/rsi/reflect.py` + `prompts/rsi/reflect.md`): разбор трейса моделью `deepseek-flash`, строгий JSON, каждая проблема обязана ссылаться на `event_id`; лишние цитаты отбрасываются.
+- **M7 Experience Wiki** (`aura/rsi/wiki.py`): уроки в Markdown + `index.json`, поиск по основам слов, дедуп по `diff_hash`/title.
+- **Хуки** в `aura_core.py`: трейс пишется из существующего `_on_trace_step`; ошибки, вернувшиеся текстом (`Погода недоступна…`), помечаются `success=false`.
+- Безопасные дефолты: `enabled=false`, `dry_run=true`, `mode=suggest_only`; личность (`system_prompt.py`) в whitelist, но `persona.manual_only=true` — auto-режим её не тронет.
+- Тесты: **105** (+10).
 
 ## Changelog v4.12.1 — Дубль реплики в контексте
 

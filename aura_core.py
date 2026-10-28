@@ -46,6 +46,37 @@ CONFIG = load_config()
 _skill_manager_ref = None
 _agent_ref = None
 
+# RSI (M1): ленивый логгер опыта. Трейсы локальные и не коммитятся.
+_rsi_trace = None
+_rsi_trace_checked = False
+
+_RSI_ERROR_MARKERS = (
+    "погода недоступна", "не удалось", "ошибка", "api timeout",
+    "traceback", "error:", "exception", "недоступн", "не найден",
+)
+
+
+def _looks_like_error(text) -> bool:
+    """Эвристика: инструмент вернул текст ошибки, хотя исключения не было."""
+    low = str(text or "").strip().lower()
+    return any(marker in low for marker in _RSI_ERROR_MARKERS)
+
+
+def _get_rsi_trace():
+    """Возвращает TraceLogger или None, если RSI-трейсы выключены/сломаны."""
+    global _rsi_trace, _rsi_trace_checked
+    if _rsi_trace_checked:
+        return _rsi_trace
+    _rsi_trace_checked = True
+    try:
+        from aura.rsi import TraceLogger, load_config as _rsi_cfg
+        if not _rsi_cfg().get("trace_enabled", True):
+            return None
+        _rsi_trace = TraceLogger()
+    except Exception:
+        _rsi_trace = None
+    return _rsi_trace
+
 
 # ============================================================
 # 4. ИНСТРУМЕНТЫ АГЕНТА
@@ -1519,13 +1550,18 @@ class AuraAgent:
         self._schedule_compression()
         self._schedule_briefing()
 
-    def _on_trace_step(self, step_type, tool_name, tool_args, tool_result, thought, latency, success):
-        """Callback трассировки — сохраняет каждый шаг агента."""
+    def _rsi_sid(self) -> str:
+        """ID текущей сессии для трейсов (общий с trace_steps)."""
         import uuid
-        sid = getattr(self, '_trace_session_id', None)
+        sid = getattr(self, "_trace_session_id", None)
         if not sid:
             sid = uuid.uuid4().hex[:12]
             self._trace_session_id = sid
+        return sid
+
+    def _on_trace_step(self, step_type, tool_name, tool_args, tool_result, thought, latency, success):
+        """Callback трассировки — сохраняет каждый шаг агента."""
+        sid = self._rsi_sid()
         try:
             self.db.save_trace_step(
                 session_id=sid, step_type=step_type,
@@ -1533,6 +1569,18 @@ class AuraAgent:
                 tool_result=tool_result, thought=thought[:300] if thought else None,
                 latency_ms=latency, success=success
             )
+        except Exception:
+            pass
+        # RSI M1: зеркалим шаг в JSONL (локально, не коммитится)
+        try:
+            rt = _get_rsi_trace()
+            if rt is not None:
+                if step_type == "tool_call":
+                    ok = bool(success) and not _looks_like_error(tool_result)
+                    rt.tool_result(sid, tool_name or "tool", tool_result,
+                                   success=ok, latency_ms=latency)
+                elif step_type == "error":
+                    rt.error(sid, tool_result or "error", where=tool_name or "agent")
         except Exception:
             pass
 
@@ -1860,6 +1908,13 @@ class AuraAgent:
 
         # Ленивая инициализация шедулеров при первом вызове
         self._ensure_schedulers()
+        # RSI M1: фиксируем задачу (локальный JSONL, не коммитится)
+        try:
+            rt = _get_rsi_trace()
+            if rt is not None:
+                rt.task(self._rsi_sid(), text)
+        except Exception:
+            pass
         # 1. Анализ триггеров
         trigger_result = self.trigger_system.analyze_query(text)
 
@@ -1937,17 +1992,38 @@ class AuraAgent:
         # добавляет его сам — иначе модель видит реплику дважды.
         compressed = self._compressed_history
         self._compressed_history = ""  # сброс ДО вызова, чтобы не утекал при ошибке
-        response = await self.agent.ask(
-            text,
-            stream=self.memory_stream,
-            variables={"user_id": user_id},
-            context=context_prefix,
-            compressed_history=compressed,
-            images=images
-        )
+        try:
+            response = await self.agent.ask(
+                text,
+                stream=self.memory_stream,
+                variables={"user_id": user_id},
+                context=context_prefix,
+                compressed_history=compressed,
+                images=images
+            )
+        except Exception as exc:
+            try:
+                rt = _get_rsi_trace()
+                if rt is not None:
+                    rt.error(self._rsi_sid(), exc, where="agent.ask")
+            except Exception:
+                pass
+            raise
         _t_llm = _time.perf_counter()
         await self.memory_stream.history.add({"role": "user", "content": text})
         await self.memory_stream.history.add({"role": "assistant", "content": response.content})
+        # RSI M1: итог сессии
+        try:
+            rt = _get_rsi_trace()
+            if rt is not None:
+                rt.final_outcome(
+                    self._rsi_sid(), response.content,
+                    latency_ms=int((_t_llm - _t0) * 1000),
+                    in_chars=len(text or ""),
+                    out_chars=len(response.content or ""),
+                )
+        except Exception:
+            pass
 
         # 6. Сохраняем ТОЛЬКО сообщение пользователя в сессию (для сжатия)
         self.session_messages.append({"role": "user", "content": text})

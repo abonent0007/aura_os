@@ -183,7 +183,7 @@ async def index(request: Request):
         name="index.html",
         context={
             "app_name": "AURA OS",
-            "version": "4.12.1",
+            "version": "4.13.0",
             "port": PORT,
             "tailscale_ip": tailscale_ip,
             "tailscale_hostname": TAILSCALE_HOSTNAME,

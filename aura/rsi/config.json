@@ -1,0 +1,33 @@
+{
+  "trace_enabled": true,
+  "enabled": false,
+  "dry_run": true,
+  "mode": "suggest_only",
+  "max_trace_mb": 8,
+  "reflection": {
+    "model": "deepseek-flash",
+    "max_events": 80,
+    "max_chars": 12000,
+    "temperature": 0.2,
+    "max_tokens": 1800
+  },
+  "wiki": {
+    "top_k": 5
+  },
+  "whitelist": [
+    "config.json#agent.tool_router",
+    "skills/custom/*/SKILL.md",
+    "skills/custom/*/manifest.json",
+    "skills/custom/*/skill.py",
+    "system_prompt.py"
+  ],
+  "persona": {
+    "manual_only": true
+  },
+  "limits": {
+    "max_iterations_per_day": 3,
+    "max_mutations_per_iteration": 5,
+    "max_diff_lines": 200,
+    "failure_threshold": 3
+  }
+}
