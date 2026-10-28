@@ -107,7 +107,7 @@ class MemoryTriggerSystem:
 
 
 class AuraDatabase:
-    CURRENT_SCHEMA = 1
+    CURRENT_SCHEMA = 2
 
     def __init__(self, config: dict, db_path: str = None):
         self.config = config
@@ -273,7 +273,176 @@ class AuraDatabase:
                 INSERT INTO memory_fts(rowid, summary, key_topics, key_decisions, key_facts, full_compressed_text)
                 VALUES (new.id, new.summary, new.key_topics, new.key_decisions, new.key_facts, new.full_compressed_text);
             END;
+
+            -- Непрерывность диалога: реплики между сессиями (не дневник)
+            CREATE TABLE IF NOT EXISTS dialogue_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL DEFAULT 'main',
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                mood TEXT,
+                turn_index INTEGER,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_turns_session ON dialogue_turns(session_id, id);
+            CREATE INDEX IF NOT EXISTS idx_turns_created ON dialogue_turns(created_at);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS turns_fts USING fts5(
+                content,
+                content='dialogue_turns',
+                content_rowid='id'
+            );
+            CREATE TRIGGER IF NOT EXISTS turns_ai AFTER INSERT ON dialogue_turns BEGIN
+                INSERT INTO turns_fts(rowid, content) VALUES (new.id, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS turns_ad AFTER DELETE ON dialogue_turns BEGIN
+                INSERT INTO turns_fts(turns_fts, rowid, content) VALUES ('delete', old.id, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS turns_au AFTER UPDATE ON dialogue_turns BEGIN
+                INSERT INTO turns_fts(turns_fts, rowid, content) VALUES ('delete', old.id, old.content);
+                INSERT INTO turns_fts(rowid, content) VALUES (new.id, new.content);
+            END;
+
+            -- Незакрытые темы: вопрос без ответа, обещание, начатая задача
+            CREATE TABLE IF NOT EXISTS open_topics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL DEFAULT 'main',
+                kind TEXT NOT NULL,
+                text TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                source_turn_id INTEGER,
+                created_at TEXT NOT NULL,
+                last_mentioned_at TEXT,
+                closed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_topics_status ON open_topics(session_id, status);
+
+            -- Саммари старых реплик + статистика токенов
+            CREATE TABLE IF NOT EXISTS dialogue_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL DEFAULT 'main',
+                summary TEXT NOT NULL,
+                turns_from INTEGER,
+                turns_to INTEGER,
+                tokens_before INTEGER,
+                tokens_after INTEGER,
+                created_at TEXT NOT NULL
+            );
         """)
+        self.conn.commit()
+
+    # ── Непрерывность диалога ──────────────────────────────────
+
+    def add_dialogue_turn(self, role, content, session_id="main", mood=None):
+        """Сохраняет реплику диалога (переживает рестарт процесса)."""
+        now = datetime.now().isoformat(timespec="seconds")
+        row = self.conn.execute(
+            "SELECT COALESCE(MAX(turn_index), 0) AS m FROM dialogue_turns WHERE session_id=?",
+            (session_id,)).fetchone()
+        turn_index = int(row["m"] or 0) + 1
+        cur = self.conn.execute(
+            """INSERT INTO dialogue_turns
+               (session_id, role, content, mood, turn_index, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (session_id, role, content, mood, turn_index, now))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_recent_turns(self, session_id="main", limit=8):
+        """Последние N реплик в хронологическом порядке."""
+        rows = self.conn.execute(
+            "SELECT * FROM dialogue_turns WHERE session_id=? ORDER BY id DESC LIMIT ?",
+            (session_id, int(limit))).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    def count_dialogue_turns(self, session_id="main"):
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM dialogue_turns WHERE session_id=?",
+            (session_id,)).fetchone()
+        return int(row["c"] or 0)
+
+    def search_turns_fts(self, query, limit=5, session_id="main"):
+        """Поиск по репликам (FTS5, с LIKE-fallback)."""
+        try:
+            rows = self.conn.execute(
+                """SELECT dt.*, snippet(turns_fts, 0, '<mark>', '</mark>', '...', 30) AS snippet
+                   FROM turns_fts JOIN dialogue_turns dt ON turns_fts.rowid = dt.id
+                   WHERE turns_fts MATCH ? AND dt.session_id = ?
+                   ORDER BY rank LIMIT ?""",
+                (query, session_id, int(limit))).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            rows = self.conn.execute(
+                """SELECT * FROM dialogue_turns
+                   WHERE session_id=? AND content LIKE ? ORDER BY id DESC LIMIT ?""",
+                (session_id, f"%{query}%", int(limit))).fetchall()
+            return [dict(r) for r in rows]
+
+    def prune_dialogue(self, session_id="main", max_turns=500, days=30):
+        """Ретеншн: удаляет реплики старше N дней и сверх лимита."""
+        removed = 0
+        cutoff = (datetime.now() - timedelta(days=int(days))).isoformat(timespec="seconds")
+        cur = self.conn.execute(
+            "DELETE FROM dialogue_turns WHERE session_id=? AND created_at < ?",
+            (session_id, cutoff))
+        removed += cur.rowcount or 0
+        cur = self.conn.execute(
+            """DELETE FROM dialogue_turns WHERE session_id=? AND id NOT IN (
+                   SELECT id FROM dialogue_turns WHERE session_id=?
+                   ORDER BY id DESC LIMIT ?)""",
+            (session_id, session_id, int(max_turns)))
+        removed += cur.rowcount or 0
+        self.conn.commit()
+        return removed
+
+    def save_dialogue_summary(self, summary, session_id="main", turns_from=None,
+                              turns_to=None, tokens_before=0, tokens_after=0):
+        cur = self.conn.execute(
+            """INSERT INTO dialogue_summaries
+               (session_id, summary, turns_from, turns_to, tokens_before, tokens_after, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, summary, turns_from, turns_to,
+             int(tokens_before), int(tokens_after),
+             datetime.now().isoformat(timespec="seconds")))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_latest_dialogue_summary(self, session_id="main"):
+        row = self.conn.execute(
+            "SELECT * FROM dialogue_summaries WHERE session_id=? ORDER BY id DESC LIMIT 1",
+            (session_id,)).fetchone()
+        return dict(row) if row else None
+
+    # ── Незакрытые темы ────────────────────────────────────────
+
+    def add_open_topic(self, kind, text, session_id="main", source_turn_id=None):
+        now = datetime.now().isoformat(timespec="seconds")
+        cur = self.conn.execute(
+            """INSERT INTO open_topics
+               (session_id, kind, text, status, source_turn_id, created_at, last_mentioned_at)
+               VALUES (?, ?, ?, 'open', ?, ?, ?)""",
+            (session_id, kind, text, source_turn_id, now, now))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_open_topics(self, session_id="main", limit=5):
+        rows = self.conn.execute(
+            """SELECT * FROM open_topics
+               WHERE session_id=? AND status='open'
+               ORDER BY last_mentioned_at DESC LIMIT ?""",
+            (session_id, int(limit))).fetchall()
+        return [dict(r) for r in rows]
+
+    def close_open_topic(self, topic_id):
+        self.conn.execute(
+            "UPDATE open_topics SET status='closed', closed_at=? WHERE id=?",
+            (datetime.now().isoformat(timespec="seconds"), topic_id))
+        self.conn.commit()
+
+    def touch_open_topic(self, topic_id):
+        self.conn.execute(
+            "UPDATE open_topics SET last_mentioned_at=? WHERE id=?",
+            (datetime.now().isoformat(timespec="seconds"), topic_id))
         self.conn.commit()
 
     def save_daily_summary(self, date_key, summary, session_id=None, key_topics=None,

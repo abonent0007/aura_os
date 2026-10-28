@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import Optional, List
@@ -62,6 +63,15 @@ def _looks_like_error(text) -> bool:
     return any(marker in low for marker in _RSI_ERROR_MARKERS)
 
 
+def _topic_stems(text: str) -> set:
+    """Основы слов для сравнения тем (грубо: первые 5 букв + срез окончаний)."""
+    out = set()
+    for word in re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9_]{3,}", (text or "").lower()):
+        out.add(word[:5])
+        out.add(re.sub(r"[аяоеёиыуьюй]+$", "", word))
+    return {s for s in out if len(s) >= 3}
+
+
 def _get_rsi_trace():
     """Возвращает TraceLogger или None, если RSI-трейсы выключены/сломаны."""
     global _rsi_trace, _rsi_trace_checked
@@ -96,25 +106,41 @@ def create_aura_tools(db: AuraDatabase):
             if keywords:
                 results = db.search_memory_by_tags(keywords, limit)
 
-        if not results:
+        # Непрерывность: ищем и по живым репликам, а не только по дневнику
+        try:
+            turn_results = db.search_turns_fts(query, limit)
+        except Exception:
+            turn_results = []
+
+        if not results and not turn_results:
             return f"🔍 По запросу '{query}' в истории ничего не найдено."
 
-        lines = [f"📚 **Найдено в истории ({len(results)} записей):**\n"]
-        for i, r in enumerate(results, 1):
-            date_str = r.get("date_key", "?")
-            summary = r.get("summary", "")[:200]
-            topics = r.get("key_topics", "")
-            decisions = r.get("key_decisions", "")
-
-            lines.append(f"**{i}. {date_str}**")
-            lines.append(f"   📝 {summary}")
-            if topics:
-                lines.append(f"   🏷️ Темы: {topics}")
-            if decisions:
-                lines.append(f"   ✅ Решения: {decisions}")
-            if "snippet" in r:
-                lines.append(f"   🔍 Контекст: ...{r['snippet']}...")
+        lines = []
+        if turn_results:
+            lines.append(f"💬 **Реплики ({len(turn_results)}):**\n")
+            for r in turn_results:
+                ts = (r.get("created_at") or "")[:16].replace("T", " ")
+                who = "он" if r.get("role") == "user" else "я"
+                body = (r.get("snippet") or r.get("content") or "")[:220]
+                lines.append(f"- [{ts}] {who}: {body}")
             lines.append("")
+        if results:
+            lines.append(f"📚 **Дневник ({len(results)}):**\n")
+            for i, r in enumerate(results, 1):
+                date_str = r.get("date_key", "?")
+                summary = r.get("summary", "")[:200]
+                topics = r.get("key_topics", "")
+                decisions = r.get("key_decisions", "")
+
+                lines.append(f"**{i}. {date_str}**")
+                lines.append(f"   📝 {summary}")
+                if topics:
+                    lines.append(f"   🏷️ Темы: {topics}")
+                if decisions:
+                    lines.append(f"   ✅ Решения: {decisions}")
+                if "snippet" in r:
+                    lines.append(f"   🔍 Контекст: ...{r['snippet']}...")
+                lines.append("")
 
         return "\n".join(lines)
 
@@ -152,6 +178,14 @@ def create_aura_tools(db: AuraDatabase):
                 lines.append(f"  🏷️ {topics}")
             lines.append("")
         return "\n".join(lines)
+
+    @tools.tool
+    def summarize_history(keep_last: int = 10) -> str:
+        """Сжать старые реплики диалога в саммари, оставив последние N дословно."""
+        agent = _agent_ref
+        if agent is None:
+            return "Агент не инициализирован."
+        return _run_async(agent.summarize_history(keep_last))
 
     @tools.tool
     def get_today_events() -> str:
@@ -1143,6 +1177,7 @@ def create_aura_tools(db: AuraDatabase):
 
     # Маркировка: ядерные инструменты не от скиллов
     all_core = [search_memory, get_today_summary, get_recent_history,
+    summarize_history,
     get_today_events, get_upcoming_events, add_event,
     add_birthday_reminder, search_calendar, complete_task_by_name,
     reschedule_task, get_birthdays_list, check_due_reminders,
@@ -1331,6 +1366,27 @@ class AuraAgent:
 
         # Чувство времени: помним когда он писал в прошлый раз
         self._last_message_time = None
+        self._last_gap_minutes = None
+        self._last_vision_at = 0.0
+        self._session_id = "main"
+
+        # Непрерывность: поднимаем последние реплики и сводку прошлых сессий
+        try:
+            self.db.prune_dialogue("main", max_turns=500, days=30)
+            for turn in self.db.get_recent_turns("main", 8):
+                self.memory_stream.history._messages.append(
+                    {"role": turn["role"], "content": turn["content"]})
+            summary = self.db.get_latest_dialogue_summary("main")
+            if summary:
+                self._compressed_history = f"[Сводка прошлых реплик]\n{summary['summary']}"
+            if self.memory_stream.history._messages:
+                print(f"[continuity] loaded {len(self.memory_stream.history._messages)} turns")
+            last_turn = self.db.get_recent_turns("main", 1)
+            if last_turn:
+                # Чтобы пауза после рестарта считалась от реального последнего сообщения
+                self._last_message_time = datetime.fromisoformat(last_turn[0]["created_at"])
+        except Exception as e:
+            print(f"[continuity] load failed: {e}")
 
         # Инициализация души
         self._init_soul()
@@ -1583,6 +1639,160 @@ class AuraAgent:
                     rt.error(sid, tool_result or "error", where=tool_name or "agent")
         except Exception:
             pass
+
+    # ============================================================
+    # НЕПРЕРЫВНОСТЬ: реплики, незакрытые темы, сжатие, зрение
+    # ============================================================
+
+    @staticmethod
+    def _topic_stems(text: str) -> set:
+        return _topic_stems(text)
+
+    def _extract_open_topics(self, text: str, role: str = "assistant") -> None:
+        """Детектит повисшие вопросы, обещания и задачи (эвристики, без LLM)."""
+        text = (text or "").strip()
+        if not text:
+            return
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?…])\s+", text) if s.strip()]
+        candidates = []
+        if role == "assistant":
+            for s in sentences:
+                low = s.lower()
+                if s.endswith("?") and len(s) > 12:
+                    candidates.append(("question", s))
+                if re.search(r"\bя\s+(проверю|посмотрю|сделаю|напомню|пришлю|узнаю|разберусь)\b", low):
+                    candidates.append(("promise", s))
+        else:
+            for s in sentences:
+                if re.search(r"\b(напомни|не забудь|потом|завтра|позже|сделаю|надо бы)\b", s.lower()):
+                    candidates.append(("task", s))
+
+        existing = {t["text"] for t in self.db.get_open_topics(self._session_id, limit=20)}
+        for kind, sentence in candidates[:2]:
+            chunk = sentence[:200]
+            if chunk not in existing:
+                self.db.add_open_topic(kind, chunk, self._session_id)
+
+    def _close_matching_topics(self, user_text: str) -> None:
+        """Закрывает темы: по пересечению слов или по ответу на вопрос."""
+        stems = _topic_stems(user_text)
+        for topic in self.db.get_open_topics(self._session_id, limit=20):
+            overlap = len(stems & _topic_stems(topic["text"]))
+            close = overlap >= 2
+            if topic["kind"] == "question" and not close:
+                try:
+                    created = datetime.fromisoformat(topic["created_at"])
+                    close = (datetime.now() - created).total_seconds() < 15 * 60
+                except Exception:
+                    pass
+            if close:
+                self.db.close_open_topic(topic["id"])
+
+    def _open_topics_block(self) -> str:
+        """Блок «незакрытые темы» — только после паузы > 2 часов."""
+        gap = getattr(self, "_last_gap_minutes", None)
+        if gap is None or gap < 120:
+            return ""
+        topics = self.db.get_open_topics(self._session_id, limit=5)
+        if not topics:
+            return ""
+        lines = ["[Незакрытые темы — вернись к ним первой, без упрёка:]"]
+        for t in topics[:3]:
+            lines.append(f"- ({t['kind']}) {t['text'][:160]}")
+        try:
+            from loguru import logger
+            logger.info(
+                "context: open topics injected gap={:.0f}m topics={}",
+                gap, [t["text"][:60] for t in topics[:3]],
+            )
+        except Exception:
+            pass
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _enforce_single_question(text: str) -> tuple:
+        """Soft-правило: не больше одного вопроса подряд. Возвращает (текст, правок)."""
+        if not text or text.count("?") <= 1:
+            return text, 0
+        parts = re.split(r"(?<=[.!?…])\s+", text)
+        fixed, prev_q, out = 0, False, []
+        for part in parts:
+            is_q = part.rstrip().endswith("?")
+            if is_q and prev_q:
+                part = part.rstrip()[:-1] + "."
+                fixed += 1
+                is_q = False
+            out.append(part)
+            prev_q = is_q
+        return " ".join(out), fixed
+
+    def _should_auto_look(self, text: str) -> bool:
+        """Триггеры зрения: «посмотри», «что на экране», «видишь»."""
+        low = (text or "").lower()
+        if any(n in low for n in ("не смотри", "приват", "не подсматривай")):
+            return False
+        return bool(re.search(
+            r"\b(посмотри|глянь|что на экране|что у меня на экране|видишь)\b", low))
+
+    async def _auto_screenshot_images(self):
+        """Скриншот для vision-запроса (не чаще раза в 60 секунд)."""
+        now = time.time()
+        if now - getattr(self, "_last_vision_at", 0.0) < 60:
+            return None
+
+        def _grab() -> bytes:
+            import io
+            from PIL import ImageGrab
+            buf = io.BytesIO()
+            ImageGrab.grab().save(buf, format="PNG")
+            return buf.getvalue()
+
+        try:
+            data = await asyncio.to_thread(_grab)
+        except Exception as e:
+            print(f"[vision] screenshot failed: {e}")
+            return None
+        self._last_vision_at = now
+        try:
+            from loguru import logger
+            logger.info("vision: auto screenshot triggered ({} bytes)", len(data))
+        except Exception:
+            pass
+        import base64
+        return [f"data:image/png;base64,{base64.b64encode(data).decode('ascii')}"]
+
+    async def summarize_history(self, keep_last: int = 10, session_id: str = None) -> str:
+        """Сжимает старые реплики в саммари, последние N оставляет дословно."""
+        sid = session_id or self._session_id
+        turns = self.db.get_recent_turns(sid, limit=100000)
+        if len(turns) <= keep_last:
+            return f"Сжимать нечего: {len(turns)} реплик (порог {keep_last})."
+
+        old = turns[:-keep_last]
+        before = sum(max(1, len(t["content"]) // 4) for t in old)
+        text = "\n".join(f"[{t['role']}]: {t['content'][:400]}" for t in old)
+        try:
+            summary = await self.compactor.ask(
+                "Сожми диалог в 4-6 предложений. Сохрани имена, факты, обещания "
+                "и решения. Без воды:",
+                context=text[:12000],
+            )
+            summary_text = (summary.content or "").strip()
+        except Exception as e:
+            return f"Не удалось сжать историю: {e}"
+        if not summary_text:
+            return "Не удалось сжать историю: пустой ответ."
+
+        after = max(1, len(summary_text) // 4)
+        self.db.save_dialogue_summary(
+            summary_text, session_id=sid,
+            turns_from=old[0]["id"], turns_to=old[-1]["id"],
+            tokens_before=before, tokens_after=after,
+        )
+        self._compressed_history = f"[Сводка прошлых реплик]\n{summary_text}"
+        ratio = before / max(after, 1)
+        return (f"Сжато {len(old)} реплик: ~{before} → ~{after} токенов "
+                f"(×{ratio:.1f}). Последние {keep_last} остались дословно.")
 
     # ============================================================
     # ДУША АУРЫ — Soul (v2.5)
@@ -1918,6 +2128,14 @@ class AuraAgent:
         # 1. Анализ триггеров
         trigger_result = self.trigger_system.analyze_query(text)
 
+        # Непрерывность: сохраняем реплику пользователя, закрываем отвеченные темы
+        try:
+            self.db.add_dialogue_turn("user", text, session_id=self._session_id)
+            self._close_matching_topics(text)
+            self._extract_open_topics(text, role="user")
+        except Exception:
+            pass
+
         # 1.5. Тон пользователя — не только факты, но и как он говорил
         try:
             self._remember_user_tone(self._detect_user_state(text))
@@ -1926,11 +2144,13 @@ class AuraAgent:
 
         # 1.6. Чувство времени — заметить паузу между сообщениями
         gap_note = ""
+        self._last_gap_minutes = None
         try:
             from datetime import datetime as _dt
             now = _dt.now()
             if self._last_message_time:
                 gap_min = (now - self._last_message_time).total_seconds() / 60
+                self._last_gap_minutes = gap_min
                 if gap_min > 180:  # больше 3 часов тишины
                     hours = gap_min / 60
                     if hours < 24:
@@ -1992,6 +2212,9 @@ class AuraAgent:
         # добавляет его сам — иначе модель видит реплику дважды.
         compressed = self._compressed_history
         self._compressed_history = ""  # сброс ДО вызова, чтобы не утекал при ошибке
+        # Зрение: автодетект «посмотри / что на экране» → скриншот в vision
+        if images is None and self._should_auto_look(text):
+            images = await self._auto_screenshot_images()
         try:
             response = await self.agent.ask(
                 text,
@@ -2010,8 +2233,24 @@ class AuraAgent:
                 pass
             raise
         _t_llm = _time.perf_counter()
+        # Антишаблонность (soft): не больше одного вопроса подряд
+        try:
+            response.content, _fixed_q = self._enforce_single_question(response.content)
+            if _fixed_q:
+                from loguru import logger
+                logger.info("response: single-question guard fixed={}", _fixed_q)
+        except Exception:
+            pass
         await self.memory_stream.history.add({"role": "user", "content": text})
         await self.memory_stream.history.add({"role": "assistant", "content": response.content})
+        # Непрерывность: сохраняем ответ и фиксируем повисшие темы
+        try:
+            self.db.add_dialogue_turn(
+                "assistant", response.content,
+                session_id=self._session_id, mood=self._get_aura_mood())
+            self._extract_open_topics(response.content, role="assistant")
+        except Exception:
+            pass
         # RSI M1: итог сессии
         try:
             rt = _get_rsi_trace()
@@ -2151,6 +2390,14 @@ class AuraAgent:
             style = self._get_style_block()
             if style:
                 parts.append(style)
+        except Exception:
+            pass
+
+        # Незакрытые темы (только после паузы > 2 часов)
+        try:
+            topics_block = self._open_topics_block()
+            if topics_block:
+                parts.append(topics_block.strip())
         except Exception:
             pass
 
