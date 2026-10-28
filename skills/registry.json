@@ -5,7 +5,7 @@
       "path": "builtin\\aura-senses",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:46.979126",
+      "loaded_at": "2026-10-24T23:50:24.886158",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -13,7 +13,7 @@
       "path": "builtin\\auras-care",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:46.994772",
+      "loaded_at": "2026-10-24T23:50:24.886158",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -21,7 +21,7 @@
       "path": "builtin\\auras-heart",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:46.994772",
+      "loaded_at": "2026-10-24T23:50:24.886158",
       "errors": 0,
       "version": "1.0.1"
     },
@@ -29,7 +29,7 @@
       "path": "builtin\\auras-logic",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:46.994772",
+      "loaded_at": "2026-10-24T23:50:24.886158",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -37,7 +37,7 @@
       "path": "builtin\\auras-me-time",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:46.994772",
+      "loaded_at": "2026-10-24T23:50:24.886158",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -45,7 +45,7 @@
       "path": "builtin\\auras-whisper",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.010398",
+      "loaded_at": "2026-10-24T23:50:24.901382",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -53,7 +53,7 @@
       "path": "builtin\\calendar_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.010398",
+      "loaded_at": "2026-10-24T23:50:24.901382",
       "errors": 0,
       "version": "2.0.0"
     },
@@ -61,7 +61,7 @@
       "path": "builtin\\codebase-mapper",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.010398",
+      "loaded_at": "2026-10-24T23:50:24.901382",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -69,7 +69,7 @@
       "path": "builtin\\content-sanitizer",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.010398",
+      "loaded_at": "2026-10-24T23:50:24.901382",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -77,7 +77,7 @@
       "path": "builtin\\daily-bridge",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.010398",
+      "loaded_at": "2026-10-24T23:50:24.901382",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -85,7 +85,7 @@
       "path": "builtin\\engineering-mindset",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.026027",
+      "loaded_at": "2026-10-24T23:50:24.901382",
       "errors": 0,
       "version": "2.0.0"
     },
@@ -93,7 +93,7 @@
       "path": "builtin\\gh_key_hunter",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.026027",
+      "loaded_at": "2026-10-24T23:50:24.901382",
       "errors": 0,
       "version": "1.0.1"
     },
@@ -101,7 +101,7 @@
       "path": "builtin\\idea-refine",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.026027",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -109,7 +109,7 @@
       "path": "builtin\\initiative-agent",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.041647",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "2.0.0"
     },
@@ -117,7 +117,7 @@
       "path": "builtin\\persona-extractor",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.041647",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -125,7 +125,7 @@
       "path": "builtin\\project_manager",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.051668",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "2.0.0"
     },
@@ -133,7 +133,7 @@
       "path": "builtin\\radio",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.051668",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -141,7 +141,7 @@
       "path": "builtin\\rss-news-aggregator",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.051668",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -149,7 +149,7 @@
       "path": "builtin\\session-analyzer",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.067314",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -157,7 +157,7 @@
       "path": "builtin\\vibe-coach",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.067314",
+      "loaded_at": "2026-10-24T23:50:24.917019",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -165,7 +165,7 @@
       "path": "builtin\\weather_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.067314",
+      "loaded_at": "2026-10-24T23:50:24.933603",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -173,7 +173,7 @@
       "path": "builtin\\web_search_skill",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.078330",
+      "loaded_at": "2026-10-24T23:50:24.933603",
       "errors": 0,
       "version": "2.0.1"
     },
@@ -181,7 +181,7 @@
       "path": "custom\\api-finder",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.093965",
+      "loaded_at": "2026-10-24T23:50:24.938889",
       "errors": 0,
       "version": "7.0.0"
     },
@@ -189,7 +189,7 @@
       "path": "custom\\astrologer",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.093965",
+      "loaded_at": "2026-10-24T23:50:24.938889",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -197,7 +197,7 @@
       "path": "custom\\aura-kitchen",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.093965",
+      "loaded_at": "2026-10-24T23:50:24.951060",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -205,7 +205,7 @@
       "path": "custom\\browser-automation",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.367626",
+      "loaded_at": "2026-10-24T23:50:25.082453",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -213,7 +213,7 @@
       "path": "custom\\car",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:47.367626",
+      "loaded_at": "2026-10-24T23:50:25.082453",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -221,7 +221,7 @@
       "path": "custom\\freelance-manager",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.383254",
+      "loaded_at": "2026-10-24T23:50:25.082453",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -229,7 +229,7 @@
       "path": "custom\\infographic-generator",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:48.167446",
+      "loaded_at": "2026-10-24T23:50:25.471990",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -237,7 +237,7 @@
       "path": "custom\\kazan_direction_trains",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:48.184596",
+      "loaded_at": "2026-10-24T23:50:25.471990",
       "errors": 0,
       "version": "1.1.0"
     },
@@ -245,7 +245,7 @@
       "path": "custom\\micro-product",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:48.184596",
+      "loaded_at": "2026-10-24T23:50:25.471990",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -253,7 +253,7 @@
       "path": "custom\\moex_stock_tracker",
       "enabled": true,
       "stability": "stable",
-      "loaded_at": "2026-10-19T12:03:48.184596",
+      "loaded_at": "2026-10-24T23:50:25.471990",
       "errors": 0,
       "version": "3.0.0"
     },
@@ -261,7 +261,7 @@
       "path": "custom\\osint_key_hunter",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:48.207179",
+      "loaded_at": "2026-10-24T23:50:25.471990",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -269,7 +269,7 @@
       "path": "custom\\synastry",
       "enabled": true,
       "stability": "beta",
-      "loaded_at": "2026-10-19T12:03:48.212747",
+      "loaded_at": "2026-10-24T23:50:25.487722",
       "errors": 0,
       "version": "1.1.0"
     },
@@ -277,7 +277,7 @@
       "path": "custom\\test-runner",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:48.212747",
+      "loaded_at": "2026-10-24T23:50:25.487722",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -285,7 +285,7 @@
       "path": "custom\\token_counter",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:48.212747",
+      "loaded_at": "2026-10-24T23:50:25.487722",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -293,7 +293,7 @@
       "path": "custom\\transit-watcher",
       "enabled": true,
       "stability": "fresh",
-      "loaded_at": "2026-10-19T12:03:48.212747",
+      "loaded_at": "2026-10-24T23:50:25.487722",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -301,7 +301,7 @@
       "path": "custom\\project",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:48.207179",
+      "loaded_at": "2026-10-24T23:50:25.487722",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -309,7 +309,7 @@
       "path": "custom\\auras-audit",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.093965",
+      "loaded_at": "2026-10-24T23:50:24.951060",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -317,7 +317,7 @@
       "path": "custom\\auras-evolve",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.109594",
+      "loaded_at": "2026-10-24T23:50:24.951060",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -325,7 +325,7 @@
       "path": "custom\\freelance-hunter",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.383254",
+      "loaded_at": "2026-10-24T23:50:25.082453",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -333,7 +333,7 @@
       "path": "custom\\desktop-control",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.367626",
+      "loaded_at": "2026-10-24T23:50:25.082453",
       "errors": 0,
       "version": "1.0.0"
     },
@@ -341,11 +341,11 @@
       "path": "custom\\google-ai",
       "enabled": true,
       "stability": "testing",
-      "loaded_at": "2026-10-19T12:03:47.383254",
+      "loaded_at": "2026-10-24T23:50:25.082453",
       "errors": 0,
       "version": "1.0.0"
     }
   },
   "creation_history": [],
-  "updated_at": "2026-10-19T12:03:48.212747"
+  "updated_at": "2026-10-24T23:50:25.487722"
 }

@@ -1,0 +1,135 @@
+{
+  "backups": [
+    {
+      "id": "backup_2026-10-24_15-55-58",
+      "timestamp": "2026-10-24_15-55-58",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_15-57-49",
+      "timestamp": "2026-10-24_15-57-49",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_17-09-51",
+      "timestamp": "2026-10-24_17-09-51",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_17-17-38",
+      "timestamp": "2026-10-24_17-17-38",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_17-22-05",
+      "timestamp": "2026-10-24_17-22-05",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_17-36-06",
+      "timestamp": "2026-10-24_17-36-06",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_23-20-32",
+      "timestamp": "2026-10-24_23-20-32",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_23-21-09",
+      "timestamp": "2026-10-24_23-21-09",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_23-48-38",
+      "timestamp": "2026-10-24_23-48-38",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    },
+    {
+      "id": "backup_2026-10-24_23-50-25",
+      "timestamp": "2026-10-24_23-50-25",
+      "reason": "startup",
+      "files": [
+        "config.json",
+        "aura_core.py",
+        "skill_manager.py",
+        "skills/registry.json",
+        ".env"
+      ],
+      "is_automatic": true
+    }
+  ],
+  "updated_at": "2026-10-24T23:50:25.510406"
+}

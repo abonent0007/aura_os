@@ -54,3 +54,12 @@ skills/**/session_log.json
 .playwright-mcp/
 .pytest_cache/
 .venv-tts/
+
+# RSI runtime (трейсы/кандидаты содержат личные данные)
+aura/rsi/traces/
+aura/rsi/reflections/
+aura/rsi/candidates/
+aura/rsi/eval/private/
+aura/rsi/history.jsonl
+skills/.auras_backups/
+*.bak
